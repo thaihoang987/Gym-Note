@@ -481,6 +481,12 @@ export function migrate() {
   if (!hasColumn('workout_sessions', 'used_superset')) {
     db.exec('ALTER TABLE workout_sessions ADD COLUMN used_superset INTEGER NOT NULL DEFAULT 0');
   }
+  // Links a body_weight_logs row that was auto-created from a scan back to the
+  // body_composition_logs row it came from, so the merged weight list can offer a "view report"
+  // link on that entry without guessing the association from matching dates.
+  if (!hasColumn('body_weight_logs', 'source_composition_id')) {
+    db.exec('ALTER TABLE body_weight_logs ADD COLUMN source_composition_id INTEGER REFERENCES body_composition_logs(id) ON DELETE SET NULL');
+  }
   db.prepare('UPDATE user_settings SET rest_seconds = 60 WHERE rest_seconds = 90').run();
   db.prepare('UPDATE user_settings SET auto_next_set = 1 WHERE auto_next_set = 0').run();
   db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_users_username ON users(username)');

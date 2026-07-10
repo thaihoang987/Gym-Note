@@ -2495,6 +2495,22 @@ app.post('/api/body-weight', (req, res) => {
   res.status(201).json({ id: result.lastInsertRowid });
 });
 
+// Lets the confirm-form-free "auto-filled" weight entries created alongside a scan (see POST
+// /api/body-composition below) be corrected in place — OCR can misread the weight, and re-scanning
+// isn't the only way to fix that.
+app.patch('/api/body-weight/:id', (req, res) => {
+  const userId = getUserId(req);
+  requireBody(['weight', 'unit'], req.body);
+  const result = db.prepare('UPDATE body_weight_logs SET weight = ?, unit = ? WHERE id = ? AND user_id = ?')
+    .run(Number(req.body.weight), req.body.unit, Number(req.params.id), userId);
+  if (result.changes === 0) {
+    const error = new Error('Not found');
+    error.status = 404;
+    throw error;
+  }
+  res.json({ ok: true });
+});
+
 const BODY_COMPOSITION_FIELDS = [
   'weight_kg', 'weight_grade', 'body_score', 'bmi', 'bmi_grade', 'body_fat_percent', 'body_fat_grade',
   'body_water_mass_kg', 'fat_mass_kg', 'bone_mineral_mass_kg', 'protein_mass_kg',
@@ -2533,6 +2549,14 @@ app.post('/api/body-composition', (req, res) => {
   }
   const placeholders = columns.map(() => '?').join(', ');
   const result = db.prepare(`INSERT INTO body_composition_logs (${columns.join(', ')}) VALUES (${placeholders})`).run(...values);
+  // Auto-fills the plain body-weight tracker from the scan's weight reading too, so the user
+  // doesn't have to separately re-type the same number there — kept as its own row (not just
+  // read off body_composition_logs at display time) so it can be corrected independently if OCR
+  // misread the weight, via PATCH /api/body-weight/:id.
+  if (req.body.weight_kg !== undefined && req.body.weight_kg !== null) {
+    db.prepare('INSERT INTO body_weight_logs (user_id, weight, unit, logged_at, source_composition_id) VALUES (?, ?, ?, ?, ?)')
+      .run(userId, Number(req.body.weight_kg), 'kg', req.body.loggedAt || new Date().toISOString(), result.lastInsertRowid);
+  }
   res.status(201).json({ id: result.lastInsertRowid });
 });
 

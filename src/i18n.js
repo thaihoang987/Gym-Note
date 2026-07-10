@@ -16,7 +16,7 @@
     // day labels
     days: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
     // body weight
-    bw_label: 'Body weight', bw_date: 'Date', bw_weight: 'Weight', bw_no_history: 'No history yet.',
+    bw_label: 'Body weight', bw_date: 'Date', bw_weight: 'Weight', bw_no_history: 'No history yet.', bw_edit: 'Tap to edit',
     // body composition (Xiaomi scale scan)
     bodycomp_scan_title: 'Scan body composition report', bodycomp_scan_hint: 'Take a photo of your Xiaomi scale report and the app will read the values for you.',
     bodycomp_scan_pick: 'Scan report', bodycomp_scan_processing: 'Reading photo...', bodycomp_scan_confirm_hint: 'Check the values below before saving — OCR can misread a number.',
@@ -30,6 +30,9 @@
     bodycomp_section_title: 'Body composition', bodycomp_vs_previous: 'vs previous', bodycomp_grading: 'Grading', bodycomp_no_data: 'No body composition data yet — scan a report to get started.',
     bodycomp_analysis_title: 'Analysis and suggestions', bodycomp_report_title: 'Body composition report', bodycomp_no_reports: 'No scans yet — scan a report to get started.',
     bodycomp_view_report: 'View report', bodycomp_reports_list: 'Past scans', bodycomp_weight_suggestions: 'Weight suggestions',
+    bodycomp_zone_athletic: 'Athletic', bodycomp_zone_overweight: 'Overweight', bodycomp_zone_obese: 'Obese', bodycomp_zone_muscular: 'Muscular',
+    bodycomp_zone_fit: 'Fit', bodycomp_zone_slim_muscular: 'Slim & muscular', bodycomp_zone_slim: 'Slim', bodycomp_zone_invisibly_obese: 'Invisibly obese',
+    bodycomp_zone_lean: 'Lean', bodycomp_zone_underweight: 'Underweight',
     bodycomp_report_delta: (deltaAbs, unit, days, increased) => `${increased ? 'Increase' : 'Decrease'} of ${deltaAbs}${unit} compared to ${days} day${days === 1 ? '' : 's'} ago`,
     bodycomp_no_change: (days) => `No change compared to ${days} day${days === 1 ? '' : 's'} ago`,
     bodycomp_body_score_healthy: 'You are very healthy. Please continue to maintain a healthy diet and an appropriate amount of exercise.',
@@ -370,7 +373,7 @@
     loading: 'Đang tải...',
     mode_free: 'Tự do', mode_fixed: 'Cố định', mode_rolling: 'Cuốn chiếu',
     days: ['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'CN'],
-    bw_label: 'Cân nặng', bw_date: 'Ngày tháng', bw_weight: 'Cân nặng', bw_no_history: 'Chưa có lịch sử.',
+    bw_label: 'Cân nặng', bw_date: 'Ngày tháng', bw_weight: 'Cân nặng', bw_no_history: 'Chưa có lịch sử.', bw_edit: 'Bấm để sửa',
     bodycomp_scan_title: 'Scan báo cáo thành phần cơ thể', bodycomp_scan_hint: 'Chụp ảnh báo cáo từ cân Xiaomi, app sẽ tự đọc số liệu giúp bạn.',
     bodycomp_scan_pick: 'Scan báo cáo', bodycomp_scan_processing: 'Đang đọc ảnh...', bodycomp_scan_confirm_hint: 'Kiểm tra lại số liệu bên dưới trước khi lưu — OCR có thể đọc sai vài chỗ.',
     bodycomp_scan_retry: 'Chụp lại', bodycomp_scan_save: 'Lưu', bodycomp_body_score: 'Điểm cơ thể', bodycomp_scan_raw_text: 'Text OCR gốc (debug)',
@@ -383,6 +386,9 @@
     bodycomp_section_title: 'Thành phần cơ thể', bodycomp_vs_previous: 'so với lần trước', bodycomp_grading: 'Đánh giá', bodycomp_no_data: 'Chưa có dữ liệu thành phần cơ thể — scan báo cáo để bắt đầu.',
     bodycomp_analysis_title: 'Phân tích và gợi ý', bodycomp_report_title: 'Báo cáo thành phần cơ thể', bodycomp_no_reports: 'Chưa có lần scan nào — scan báo cáo để bắt đầu.',
     bodycomp_view_report: 'Xem báo cáo', bodycomp_reports_list: 'Lịch sử scan', bodycomp_weight_suggestions: 'Gợi ý cân nặng',
+    bodycomp_zone_athletic: 'Vận động viên', bodycomp_zone_overweight: 'Thừa cân', bodycomp_zone_obese: 'Béo phì', bodycomp_zone_muscular: 'Cơ bắp',
+    bodycomp_zone_fit: 'Cân đối', bodycomp_zone_slim_muscular: 'Thon gọn & cơ bắp', bodycomp_zone_slim: 'Thon gọn', bodycomp_zone_invisibly_obese: 'Béo ẩn',
+    bodycomp_zone_lean: 'Săn chắc', bodycomp_zone_underweight: 'Thiếu cân',
     bodycomp_report_delta: (deltaAbs, unit, days, increased) => `${increased ? 'Tăng' : 'Giảm'} ${deltaAbs}${unit} so với ${days} ngày trước`,
     bodycomp_no_change: (days) => `Không đổi so với ${days} ngày trước`,
     bodycomp_body_score_healthy: 'Bạn rất khỏe mạnh. Hãy tiếp tục duy trì chế độ ăn lành mạnh và tập luyện phù hợp.',

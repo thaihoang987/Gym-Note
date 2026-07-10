@@ -3229,6 +3229,54 @@ function Dashboard({ userId, onStart, refresh, settings, onChanged }) {
   );
 }
 
+// A weight-history row is editable inline (tap the number to switch to an input) rather than
+// through a separate form — this is the "auto-filled" number a scan writes into body_weight_logs
+// (see POST /api/body-composition on the server), and since OCR can misread it, correcting it
+// needs to be at least as easy as the read itself.
+function BodyWeightHistoryRow({ row, settings, onSaved, onOpenReport }) {
+  const t = useLang();
+  const [editing, setEditing] = useState(false);
+  const [value, setValue] = useState(String(row.weight));
+
+  const save = async () => {
+    const next = Number(value);
+    if (!Number.isFinite(next) || next <= 0 || next === row.weight) { setEditing(false); return; }
+    await api(`/api/body-weight/${row.id}`, { method: 'PATCH', body: JSON.stringify({ weight: next, unit: row.unit }) });
+    setEditing(false);
+    onSaved();
+  };
+
+  if (editing) {
+    return (
+      <div className="grid grid-cols-[1fr_auto_auto] items-center gap-2 border-b border-stone-100 py-2 text-sm last:border-b-0">
+        <span className="font-semibold text-slate-700">{formatDate(row.logged_at, settings)}</span>
+        <input
+          className="input compact-input w-20"
+          type="number"
+          step="0.1"
+          autoFocus
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && save()}
+        />
+        <button className="icon-btn" onClick={save}><Check size={16} /></button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="grid grid-cols-[1fr_auto_auto] items-center gap-3 border-b border-stone-100 py-2 text-sm last:border-b-0">
+      <span className="font-semibold text-slate-700">{formatDate(row.logged_at, settings)}</span>
+      <button type="button" className="font-black text-slate-950" title={t('bw_edit')} onClick={() => setEditing(true)}>
+        {row.weight} {row.unit}
+      </button>
+      {row.source_composition_id
+        ? <button type="button" className="icon-btn" title={t('bodycomp_view_report')} onClick={onOpenReport}><ChevronRight size={16} /></button>
+        : <span className="w-9" />}
+    </div>
+  );
+}
+
 function BodyWeightInput({ userId, settings }) {
   const t = useLang();
   const [weight, setWeight] = useState('');
@@ -3248,6 +3296,10 @@ function BodyWeightInput({ userId, settings }) {
     await api('/api/body-weight', { method: 'POST', body: JSON.stringify({ userId, weight: Number(weight), unit }) });
     setWeight('');
     loadHistory();
+  };
+  const openReportFor = (compositionId) => {
+    const index = compLogs.findIndex((r) => r.id === compositionId);
+    if (index !== -1) setReportIndex(index);
   };
   return (
     <div className="panel body-weight-card">
@@ -3270,29 +3322,15 @@ function BodyWeightInput({ userId, settings }) {
         </div>
         {history.length === 0 && <p className="py-2 text-sm text-slate-600">{t('bw_no_history')}</p>}
         {history.map((row) => (
-          <div key={row.id} className="grid grid-cols-[1fr_auto] gap-3 border-b border-stone-100 py-2 text-sm last:border-b-0">
-            <span className="font-semibold text-slate-700">{formatDate(row.logged_at, settings)}</span>
-            <span className="font-black text-slate-950">{row.weight} {row.unit}</span>
-          </div>
+          <BodyWeightHistoryRow
+            key={row.id}
+            row={row}
+            settings={settings}
+            onSaved={loadHistory}
+            onOpenReport={() => openReportFor(row.source_composition_id)}
+          />
         ))}
       </div>
-      {compLogs.length > 0 && (
-        <div className="weight-history mt-3">
-          <p className="border-b border-stone-200 pb-1 text-xs font-bold uppercase text-slate-500">{t('bodycomp_reports_list')}</p>
-          {compLogs.slice().reverse().slice(0, 5).map((row) => (
-            <button
-              key={row.id}
-              type="button"
-              className="grid w-full grid-cols-[1fr_auto_auto] items-center gap-3 border-b border-stone-100 py-2 text-left text-sm last:border-b-0"
-              onClick={() => setReportIndex(compLogs.findIndex((r) => r.id === row.id))}
-            >
-              <span className="font-semibold text-slate-700">{formatDate(row.logged_at, settings)}</span>
-              <span className="font-black text-slate-950">{row.weight_kg ?? '--'} kg</span>
-              <ChevronRight size={16} className="text-slate-400" />
-            </button>
-          ))}
-        </div>
-      )}
       {scanOpen && <BodyCompositionScanModal userId={userId} onClose={() => setScanOpen(false)} onSaved={() => { loadHistory(); loadCompLogs(); }} />}
       {reportIndex !== null && (
         <BodyCompositionReportPage
@@ -3472,10 +3510,13 @@ function BodyCompositionScanModal({ userId, onClose, onSaved }) {
             <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 space-y-2">
               <div className="grid grid-cols-[1fr_auto] items-center gap-2">
                 <label className="text-sm font-semibold text-slate-700">{t('bodycomp_body_type')}</label>
-                <select className="input compact-input w-40" value={fields.body_type_zone ?? ''} onChange={(e) => updateField('body_type_zone', e.target.value || null)}>
-                  <option value="">--</option>
-                  {BODY_TYPE_ZONES.map((zone) => <option key={zone} value={zone}>{zone}</option>)}
-                </select>
+                <WheelPicker
+                  value={fields.body_type_zone || BODY_TYPE_ZONES[0]}
+                  options={BODY_TYPE_ZONES}
+                  onChange={(zone) => updateField('body_type_zone', zone)}
+                  formatLabel={(zone) => bodyTypeZoneLabel(zone, t)}
+                  dense
+                />
               </div>
               <div className="grid grid-cols-[1fr_auto] items-center gap-2">
                 <label className="text-sm font-semibold text-slate-700">{t('bodycomp_standard_weight')}</label>
@@ -7830,17 +7871,17 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
   );
 }
 
-function WheelPicker({ value, options, suffix = '', onChange, dense = false }) {
+function WheelPicker({ value, options, suffix = '', onChange, dense = false, formatLabel }) {
   const pickerOptions = useMemo(() => options.map((item) => ({
     value: String(item),
     label: (
       <span className="compact-wheel-label">
-        <strong>{item}</strong>
+        <strong>{formatLabel ? formatLabel(item) : item}</strong>
         {suffix && <small>{suffix}</small>}
       </span>
     ),
-    textValue: `${item}${suffix}`
-  })), [options, suffix]);
+    textValue: `${formatLabel ? formatLabel(item) : item}${suffix}`
+  })), [options, suffix, formatLabel]);
 
   const currentValue = String(value ?? options[0]);
 
@@ -8193,6 +8234,21 @@ function ReportStatCard({ label, value, unit, grade, delta, onClick }) {
 // the high-body-fat column — everything else is one cell. `zone` is the value already saved on
 // the log row (from OCR or the user's own correction in the scan confirm form), so this only
 // needs to highlight the matching cell(s), not recompute the classification itself.
+// BODY_TYPE_ZONES / the values saved on a log row are always this exact English text (it's what
+// OCR reads off the report and what classifyBodyType produces — shared with the server, so it
+// can't be localized at the source), but the zone names shown on screen are this app's own UI
+// chrome, not literal report text like the grade badges are — so they're translated for display
+// while the comparison against the stored value keeps using the canonical English string.
+const BODY_TYPE_ZONE_KEYS = {
+  Athletic: 'bodycomp_zone_athletic', Overweight: 'bodycomp_zone_overweight', Obese: 'bodycomp_zone_obese', Muscular: 'bodycomp_zone_muscular',
+  Fit: 'bodycomp_zone_fit', 'Slim & muscular': 'bodycomp_zone_slim_muscular', Slim: 'bodycomp_zone_slim', 'Invisibly obese': 'bodycomp_zone_invisibly_obese',
+  Lean: 'bodycomp_zone_lean', Underweight: 'bodycomp_zone_underweight'
+};
+function bodyTypeZoneLabel(zone, t) {
+  const key = BODY_TYPE_ZONE_KEYS[zone];
+  return key ? t(key) : zone;
+}
+
 function BodyTypeGrid({ zone, t }) {
   const cells = [
     { area: 'athletic', zone: 'Athletic' }, { area: 'overweight1', zone: 'Overweight' }, { area: 'obese', zone: 'Obese' },
@@ -8218,7 +8274,7 @@ function BodyTypeGrid({ zone, t }) {
               className={`flex items-center justify-center rounded-md p-1 text-center text-[11px] leading-tight ${active ? 'bg-emerald-500 text-white font-bold' : 'bg-white/10 text-slate-400'}`}
               style={{ gridArea: c.area }}
             >
-              {c.zone}
+              {bodyTypeZoneLabel(c.zone, t)}
             </div>
           );
         })}
