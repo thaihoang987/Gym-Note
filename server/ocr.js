@@ -9,11 +9,18 @@ import fs from 'node:fs/promises';
 // truncate at the comma, so normalize to a dot first.
 function parseLocaleNumber(text) {
   if (text === undefined || text === null) return null;
-  const cleaned = String(text)
+  let cleaned = String(text)
     .replace(/[−–—=]/g, '-') // Unicode minus/en-dash/em-dash, plus a bare "=" (Tesseract's
     // most common misread of "-" directly against a digit, e.g. "Weight control: =2,6 kg")
     .replace(/,/g, '.')
     .replace(/[^\d.+-]/g, '');
+  // Every value on this report is formatted to exactly one decimal digit ("37.2", "11.5",
+  // "49.9"...), never two. A second decimal digit showing up ("37.24", "11.59" — both seen in
+  // real scans) is Tesseract hallucinating/misreading one extra trailing digit onto an otherwise
+  // correctly-read number, not a genuinely more precise reading — so it's dropped, not rounded
+  // (rounding "11.59" would give 11.6, but the real value is 11.5).
+  const dot = cleaned.indexOf('.');
+  if (dot !== -1 && cleaned.length - dot - 1 > 1) cleaned = cleaned.slice(0, dot + 2);
   const value = Number(cleaned);
   return Number.isFinite(value) ? value : null;
 }
@@ -278,6 +285,22 @@ export function parseBodyCompositionText(text) {
   result.weight_grade = weightGradeMatch ? weightGradeMatch[1] : null;
   parser.advanceTo('Body score');
 
+  // The big top-of-report weight figure is split across two differently-sized text elements
+  // ("64" huge, ",2" small) — Tesseract sometimes reads the big "64" fine but drops the small
+  // decimal entirely ("64;" with the "2" gone, not just misread). That precision is separately
+  // encoded in the "Weight suggestions" identity (standard weight = weight + weight control), so
+  // read those two values now and use them to fill in the missing decimal — but only when doing
+  // so doesn't change the integer part, so a corrupted "Standard weight" digit (also seen in
+  // production: "61,6" OCR'd as "67,6") can't inject a wildly wrong weight.
+  const standardWeightRaw = numberAfterLabel(text, 'Standard weight');
+  const weightControlRaw = numberAfterLabel(text, 'Weight control', { signed: true });
+  if (result.weight_kg !== null && standardWeightRaw !== null && weightControlRaw !== null) {
+    const refined = Number((standardWeightRaw - weightControlRaw).toFixed(1));
+    if (plausible('weight_kg', refined) && Math.abs(refined - result.weight_kg) <= 1) {
+      result.weight_kg = refined;
+    }
+  }
+
   ({ value: result.body_score } = parser.single('body_score', 'points', { window: 5, hasGrade: false }));
 
   const [bmi, bodyFat] = parser.pair([
@@ -342,8 +365,8 @@ export function parseBodyCompositionText(text) {
   result.body_type_zone = null;
 
   // Weight suggestions section — inline "Label: Value" layout, opposite direction from above.
-  result.standard_weight_kg = numberAfterLabel(text, 'Standard weight');
-  result.weight_control_kg = numberAfterLabel(text, 'Weight control', { signed: true });
+  result.standard_weight_kg = standardWeightRaw;
+  result.weight_control_kg = weightControlRaw;
   result.fat_control_kg = numberAfterLabel(text, 'Fat control', { signed: true });
   result.muscle_control_text = /keep weight/i.test(text) ? 'keep weight' : null;
 
