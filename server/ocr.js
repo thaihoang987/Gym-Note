@@ -225,12 +225,13 @@ const INTEGER_ONLY_FIELDS = new Set(['body_score', 'visceral_fat_rating', 'bmr_k
 // neighboring letter and with clean spacing (both seen in production), so gluedness alone can't
 // distinguish it from a real reading — but the field being matched can: heart rate is the one
 // metric on this report where a bare [100,109] integer is a completely ordinary value (a normal
-// pulse), and no other field's real readings ever land in that range. So a token there is only
-// trusted when heart_rate_bpm is among the fields actually being matched at this position;
-// filtered out as noise for everything else (a real case: "102" — a mangled BMI delta — was
-// wrongly kept and stole body_fat_percent's slot once this stopped requiring gluedness).
-function isDeltaNoise(value, candidateKeys) {
-  return value !== null && value >= 100 && value <= 109 && Number.isInteger(value) && !candidateKeys.includes('heart_rate_bpm');
+// pulse), and no other field's real readings ever land in that range. Checked per-field (inside
+// resolveValue) rather than as a blanket token pre-filter — a pre-filter keyed on "is heart rate
+// anywhere in this row" let a mangled "108" leak into fat_free_weight_kg too, since it shares a
+// row (and therefore a token pool) with heart_rate_bpm; checking the specific field being resolved
+// means the exemption only ever applies to heart_rate_bpm itself, not its row-mate.
+function isDeltaNoise(key, value) {
+  return value !== null && value >= 100 && value <= 109 && Number.isInteger(value) && key !== 'heart_rate_bpm';
 }
 
 // Another real-sample delta mangling, distinct from the "10X" pattern above: an up/down arrow
@@ -303,11 +304,35 @@ function numberTokens(fullText, from, to) {
 // mangled delta arrow ("↓0.3" -> "10s") that happens to also land in some *other* metric's valid
 // range — e.g. the noise value 10 is a perfectly plausible protein_percent on its own. So a glued
 // token passing the raw check is treated as suspect noise, not a free pass.
+// A misread arrow character (↓/↑) directly followed by its own "0.X" delta figure, with no space
+// or letter between them, collapses into a token shaped like "N0.X" where N is whatever the arrow
+// got misread as (both "1" and "4" confirmed in real scans — see isDeltaNoise's [100,109] case for
+// the "1" variant) and the ones digit is always 0. body_fat_percent sits right after BMI on the
+// same row, so BMI's own delta lands exactly where body_fat_percent's real value is expected — and
+// unlike the [100,109] case, "40.2"-shaped noise is already a directly plausible body_fat_percent
+// reading on its own, so nothing else in the pipeline catches it (confirmed 3 times in production:
+// "40.2", "40.3", and "408" recovering to "40.8", none matching the actual reading each time).
+// Scoped to this one field rather than applied broadly: the same shape showed up once for
+// muscle_mass_kg too ("404" -> 40.4), but rejecting it there is NOT safe — this same user's real
+// muscle mass is itself "50.0" on some scans, which the "floor % 10 === 0" shape test can't tell
+// apart from the noise, and rejecting a genuine 50.0 reading turned out worse than leaving the
+// occasional 40.4 uncaught. body_fat_percent has shown no such conflict across every sample seen.
+function isArrowDeltaShape(key, value) {
+  return key === 'body_fat_percent' && value !== null && Math.abs(value) < 100 && Math.floor(Math.abs(value)) % 10 === 0;
+}
+
 function resolveValue(key, rawValue, glued = false) {
-  if (INTEGER_ONLY_FIELDS.has(key) && rawValue !== null && !Number.isInteger(rawValue)) return null;
-  if (plausible(key, rawValue)) return glued ? null : rawValue;
+  if (isDeltaNoise(key, rawValue)) return null;
+  const integerOnly = INTEGER_ONLY_FIELDS.has(key);
+  if (integerOnly && rawValue !== null && !Number.isInteger(rawValue)) return null;
+  if (plausible(key, rawValue) && !isArrowDeltaShape(key, rawValue)) return glued ? null : rawValue;
+  // recoverLostDecimal exists to re-insert a decimal point Tesseract dropped — it always produces
+  // a fractional result, which is never correct for a field that's never shown with one (a real
+  // case: body_score OCR'd as "835" — an extra digit glued onto the real "83" — recovered to the
+  // plausible-looking but wrong 83.5 instead of being rejected outright).
+  if (integerOnly) return null;
   const recovered = recoverLostDecimal(rawValue);
-  if (plausible(key, recovered)) return recovered;
+  if (plausible(key, recovered) && !isArrowDeltaShape(key, recovered)) return recovered;
   return null;
 }
 
@@ -337,10 +362,18 @@ class ReportParser {
 
   // Single metric with no sibling on its row (weight, body score, and everything after the
   // 2-column grid ends). Takes the nearest unclaimed, plausible number before `label`.
-  single(key, label, { window = 60, hasGrade = true } = {}) {
+  //
+  // `requireDecimal` is for the composition-mass fields, which are *always* rendered as "X.Y kg"
+  // on this report — never a bare integer. A winning token with no decimal point there is not a
+  // genuinely whole-kg reading, it's Tesseract dropping a character it couldn't read (a real case:
+  // "2.7" printed in tiny text next to the body silhouette OCR'd as "2./", where the "7" became a
+  // stray "/" that broke the decimal match, leaving just the bare, still-plausible-looking "2" —
+  // worse than the mass-from-percent fallback's 2.8 estimate it silently displaced). Rejecting it
+  // here returns null instead, so that fallback (see parseBodyCompositionText) fills the gap.
+  single(key, label, { window = 60, hasGrade = true, requireDecimal = false } = {}) {
     const found = findLabel(this.text, label, this.pos);
     if (!found) return { value: null, grade: null };
-    const tokens = numberTokens(this.text, this.pos, found.index).filter((t) => !this.claimed.has(t.index) && !isDeltaNoise(t.value, [key]) && !isLeadingZeroNoise(t.raw));
+    const tokens = numberTokens(this.text, this.pos, found.index).filter((t) => !this.claimed.has(t.index) && !isLeadingZeroNoise(t.raw) && (!requireDecimal || /[.,]/.test(t.raw)));
     let value = null;
     for (let i = tokens.length - 1; i >= 0; i -= 1) {
       const resolved = resolveValue(key, tokens[i].value, tokens[i].glued);
@@ -376,8 +409,7 @@ class ReportParser {
     const rowStart = Math.min(...found.map((f) => f.index));
     const rowLabelEnd = Math.max(...found.map((f) => f.end));
 
-    const candidateKeys = defs.map((d) => d.key);
-    const tokens = numberTokens(this.text, searchFrom, rowStart).filter((t) => !this.claimed.has(t.index) && !isDeltaNoise(t.value, candidateKeys) && !isLeadingZeroNoise(t.raw));
+    const tokens = numberTokens(this.text, searchFrom, rowStart).filter((t) => !this.claimed.has(t.index) && !isLeadingZeroNoise(t.raw));
 
     const values = [];
     let cursor = 0;
@@ -507,10 +539,10 @@ export function parseBodyCompositionText(text) {
   result.body_fat_percent = bodyFat.value; result.body_fat_grade = bodyFat.grade;
 
   parser.advanceTo('Body composition');
-  ({ value: result.body_water_mass_kg } = parser.single('body_water_mass_kg', 'Body water mass', { hasGrade: false }));
-  ({ value: result.fat_mass_kg } = parser.single('fat_mass_kg', 'Fat mass', { hasGrade: false }));
-  ({ value: result.bone_mineral_mass_kg } = parser.single('bone_mineral_mass_kg', 'Bone mineral mass', { hasGrade: false }));
-  ({ value: result.protein_mass_kg } = parser.single('protein_mass_kg', 'Protein mass', { hasGrade: false }));
+  ({ value: result.body_water_mass_kg } = parser.single('body_water_mass_kg', 'Body water mass', { hasGrade: false, requireDecimal: true }));
+  ({ value: result.fat_mass_kg } = parser.single('fat_mass_kg', 'Fat mass', { hasGrade: false, requireDecimal: true }));
+  ({ value: result.bone_mineral_mass_kg } = parser.single('bone_mineral_mass_kg', 'Bone mineral mass', { hasGrade: false, requireDecimal: true }));
+  ({ value: result.protein_mass_kg } = parser.single('protein_mass_kg', 'Protein mass', { hasGrade: false, requireDecimal: true }));
 
   const [muscleMass, musclePercent] = parser.pair([
     { key: 'muscle_mass_kg', label: 'Muscle mass' },
@@ -603,6 +635,18 @@ export function parseBodyCompositionText(text) {
     if (result.fat_mass_kg === null) { result.fat_mass_kg = massFromPercent(result.body_fat_percent); if (result.fat_mass_kg !== null) derivedFields.add('fat_mass_kg'); }
     if (result.bone_mineral_mass_kg === null) { result.bone_mineral_mass_kg = massFromPercent(result.bone_mineral_percent); if (result.bone_mineral_mass_kg !== null) derivedFields.add('bone_mineral_mass_kg'); }
     if (result.protein_mass_kg === null) { result.protein_mass_kg = massFromPercent(result.protein_percent); if (result.protein_mass_kg !== null) derivedFields.add('protein_mass_kg'); }
+  }
+
+  // Fat-free body weight is by definition total weight minus fat mass — when the direct reading
+  // is missing (a real case: "52.4 kg" OCR'd as "52.Arg", where the dropped fractional digit takes
+  // the whole token down with it via the glued-decimal check above), this identity recovers it
+  // from two values that are themselves usually reliable.
+  if (result.fat_free_weight_kg === null && result.weight_kg !== null && result.fat_mass_kg !== null) {
+    const derived = Number((result.weight_kg - result.fat_mass_kg).toFixed(1));
+    if (plausible('fat_free_weight_kg', derived)) {
+      result.fat_free_weight_kg = derived;
+      derivedFields.add('fat_free_weight_kg');
+    }
   }
 
   if (result.body_type_zone !== null) derivedFields.add('body_type_zone');
