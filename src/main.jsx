@@ -17,6 +17,7 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import {
+  AlertTriangle,
   BarChart3,
   Camera,
   CalendarDays,
@@ -3275,14 +3276,17 @@ function BodyWeightInput({ userId, settings }) {
   );
 }
 
-function BodyCompMetricCard({ label, value, unit, grade, gradeOptions, onChangeValue, onChangeGrade }) {
+function BodyCompMetricCard({ label, value, unit, grade, gradeOptions, onChangeValue, onChangeGrade, flagTitle }) {
   const [open, setOpen] = useState(false);
   const tier = gradeColorTier(grade);
   return (
-    <div className="rounded-lg border border-slate-200 bg-slate-50 p-2.5">
+    <div className={`rounded-lg border p-2.5 ${flagTitle ? 'border-amber-300 bg-amber-50' : 'border-slate-200 bg-slate-50'}`}>
       <button type="button" className="flex w-full items-start justify-between gap-2 text-left" onClick={() => setOpen((v) => !v)}>
         <div className="min-w-0">
-          <p className="truncate text-xs font-semibold text-slate-500">{label}</p>
+          <p className="flex items-center gap-1 truncate text-xs font-semibold text-slate-500">
+            {label}
+            {flagTitle && <AlertTriangle size={12} className="shrink-0 text-amber-600" title={flagTitle} />}
+          </p>
           <div className="flex items-baseline gap-1">
             <strong className="text-lg text-slate-950">{value ?? '--'}</strong>
             {unit && <span className="text-xs text-slate-500">{unit}</span>}
@@ -3333,6 +3337,7 @@ function BodyCompositionScanModal({ userId, onClose, onSaved }) {
   const [fields, setFields] = useState({});
   const [loggedAt, setLoggedAt] = useState(() => toDatetimeLocalValue(null));
   const [rawText, setRawText] = useState('');
+  const [rawRegionText, setRawRegionText] = useState(null);
   const [showRaw, setShowRaw] = useState(false);
   const [error, setError] = useState('');
 
@@ -3350,6 +3355,7 @@ function BodyCompositionScanModal({ userId, onClose, onSaved }) {
       setFields(result.fields);
       setLoggedAt(toDatetimeLocalValue(result.fields?.logged_at));
       setRawText(result.rawText || '');
+      setRawRegionText(result.rawRegionText || null);
       setStep('confirm');
     } catch (err) {
       const timedOut = err.name === 'AbortError' || /aborted/i.test(err.message || '');
@@ -3360,8 +3366,22 @@ function BodyCompositionScanModal({ userId, onClose, onSaved }) {
 
   const updateField = (key, value) => setFields((current) => ({ ...current, [key]: value }));
 
+  // A field the user edits by hand is no longer an unverified OCR guess — drop it from the
+  // warning lists so the amber flag disappears once they've confirmed/corrected it.
+  const clearFlag = (key) => setFields((current) => ({
+    ...current,
+    derived_fields: (current.derived_fields || []).filter((k) => k !== key),
+    uncertain_fields: (current.uncertain_fields || []).filter((k) => k !== key)
+  }));
+
+  const flagTitleFor = (key) => {
+    if (fields.derived_fields?.includes(key)) return t('bodycomp_scan_flag_derived');
+    if (fields.uncertain_fields?.includes(key)) return t('bodycomp_scan_flag_uncertain');
+    return null;
+  };
+
   const save = async () => {
-    const { logged_at, ...savedFields } = fields;
+    const { logged_at, derived_fields, uncertain_fields, ...savedFields } = fields;
     await api('/api/body-composition', { method: 'POST', body: JSON.stringify({ userId, photoPath, loggedAt: new Date(loggedAt).toISOString(), ...savedFields }) });
     onSaved?.();
     onClose();
@@ -3397,7 +3417,8 @@ function BodyCompositionScanModal({ userId, onClose, onSaved }) {
                 label={t('bodycomp_body_score')}
                 value={fields.body_score}
                 unit=""
-                onChangeValue={(v) => updateField('body_score', v)}
+                flagTitle={flagTitleFor('body_score')}
+                onChangeValue={(v) => { updateField('body_score', v); clearFlag('body_score'); }}
               />
               {BODY_COMPOSITION_METRIC_DEFS.map((def) => (
                 <BodyCompMetricCard
@@ -3407,7 +3428,8 @@ function BodyCompositionScanModal({ userId, onClose, onSaved }) {
                   unit={def.unit}
                   grade={def.gradeField ? fields[def.gradeField] : undefined}
                   gradeOptions={def.gradeField ? BODYCOMP_GRADE_OPTIONS : undefined}
-                  onChangeValue={(v) => updateField(def.valueField, v)}
+                  flagTitle={flagTitleFor(def.valueField)}
+                  onChangeValue={(v) => { updateField(def.valueField, v); clearFlag(def.valueField); }}
                   onChangeGrade={def.gradeField ? (v) => updateField(def.gradeField, v) : undefined}
                 />
               ))}
@@ -3421,26 +3443,49 @@ function BodyCompositionScanModal({ userId, onClose, onSaved }) {
                 </select>
               </div>
               <div className="grid grid-cols-[1fr_auto] items-center gap-2">
-                <label className="text-sm font-semibold text-slate-700">{t('bodycomp_standard_weight')}</label>
-                <input className="input compact-input w-24" type="number" step="0.1" value={fields.standard_weight_kg ?? ''} onChange={(e) => updateField('standard_weight_kg', e.target.value === '' ? null : Number(e.target.value))} />
+                <label className="flex items-center gap-1 text-sm font-semibold text-slate-700">
+                  {t('bodycomp_standard_weight')}
+                  {flagTitleFor('standard_weight_kg') && <AlertTriangle size={12} className="shrink-0 text-amber-600" title={flagTitleFor('standard_weight_kg')} />}
+                </label>
+                <input className={`input compact-input w-24 ${flagTitleFor('standard_weight_kg') ? 'border-amber-400' : ''}`} type="number" step="0.1" value={fields.standard_weight_kg ?? ''} onChange={(e) => { updateField('standard_weight_kg', e.target.value === '' ? null : Number(e.target.value)); clearFlag('standard_weight_kg'); }} />
               </div>
               <div className="grid grid-cols-[1fr_auto] items-center gap-2">
-                <label className="text-sm font-semibold text-slate-700">{t('bodycomp_weight_control')}</label>
-                <input className="input compact-input w-24" type="number" step="0.1" value={fields.weight_control_kg ?? ''} onChange={(e) => updateField('weight_control_kg', e.target.value === '' ? null : Number(e.target.value))} />
+                <label className="flex items-center gap-1 text-sm font-semibold text-slate-700">
+                  {t('bodycomp_weight_control')}
+                  {flagTitleFor('weight_control_kg') && <AlertTriangle size={12} className="shrink-0 text-amber-600" title={flagTitleFor('weight_control_kg')} />}
+                </label>
+                <input className={`input compact-input w-24 ${flagTitleFor('weight_control_kg') ? 'border-amber-400' : ''}`} type="number" step="0.1" value={fields.weight_control_kg ?? ''} onChange={(e) => { updateField('weight_control_kg', e.target.value === '' ? null : Number(e.target.value)); clearFlag('weight_control_kg'); }} />
               </div>
               <div className="grid grid-cols-[1fr_auto] items-center gap-2">
-                <label className="text-sm font-semibold text-slate-700">{t('bodycomp_fat_control')}</label>
-                <input className="input compact-input w-24" type="number" step="0.1" value={fields.fat_control_kg ?? ''} onChange={(e) => updateField('fat_control_kg', e.target.value === '' ? null : Number(e.target.value))} />
+                <label className="flex items-center gap-1 text-sm font-semibold text-slate-700">
+                  {t('bodycomp_fat_control')}
+                  {flagTitleFor('fat_control_kg') && <AlertTriangle size={12} className="shrink-0 text-amber-600" title={flagTitleFor('fat_control_kg')} />}
+                </label>
+                <input className={`input compact-input w-24 ${flagTitleFor('fat_control_kg') ? 'border-amber-400' : ''}`} type="number" step="0.1" value={fields.fat_control_kg ?? ''} onChange={(e) => { updateField('fat_control_kg', e.target.value === '' ? null : Number(e.target.value)); clearFlag('fat_control_kg'); }} />
               </div>
               <div className="grid grid-cols-[1fr_auto] items-center gap-2">
-                <label className="text-sm font-semibold text-slate-700">{t('bodycomp_muscle_control')}</label>
-                <input className="input compact-input w-32" type="text" value={fields.muscle_control_text ?? ''} onChange={(e) => updateField('muscle_control_text', e.target.value || null)} />
+                <label className="flex items-center gap-1 text-sm font-semibold text-slate-700">
+                  {t('bodycomp_muscle_control')}
+                  {flagTitleFor('muscle_control_text') && <AlertTriangle size={12} className="shrink-0 text-amber-600" title={flagTitleFor('muscle_control_text')} />}
+                </label>
+                <input className={`input compact-input w-32 ${flagTitleFor('muscle_control_text') ? 'border-amber-400' : ''}`} type="text" value={fields.muscle_control_text ?? ''} onChange={(e) => { updateField('muscle_control_text', e.target.value || null); clearFlag('muscle_control_text'); }} />
               </div>
             </div>
             {rawText && (
               <details className="rounded-lg border border-slate-200 p-2" open={showRaw} onToggle={(e) => setShowRaw(e.target.open)}>
                 <summary className="cursor-pointer text-xs font-semibold text-slate-500">{t('bodycomp_scan_raw_text')}</summary>
                 <pre className="mt-2 max-h-40 overflow-y-auto whitespace-pre-wrap text-[10px] text-slate-500">{rawText}</pre>
+              </details>
+            )}
+            {rawRegionText && (
+              <details className="rounded-lg border border-slate-200 p-2">
+                <summary className="cursor-pointer text-xs font-semibold text-slate-500">{t('bodycomp_scan_raw_region_text')}</summary>
+                {Object.entries(rawRegionText).map(([name, regionText]) => (
+                  <div key={name} className="mt-2">
+                    <p className="text-[10px] font-bold uppercase text-slate-400">{name}</p>
+                    <pre className="max-h-32 overflow-y-auto whitespace-pre-wrap text-[10px] text-slate-500">{regionText}</pre>
+                  </div>
+                ))}
               </details>
             )}
             <div className="flex gap-2 pt-2">

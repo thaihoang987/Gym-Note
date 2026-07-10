@@ -46,9 +46,19 @@ function findLabel(text, label, fromIndex = 0) {
 // makes it look like normal light-mode text, which measurably improves recognition. Greyscale
 // strips the color tinting on grade badges/section headers that otherwise confuses character
 // segmentation; normalize spreads the contrast range; sharpen crisps up small card-label text.
-async function preprocessForOcr(imagePath) {
+async function preprocessForOcr(imagePath, region = null) {
   const outPath = path.join(os.tmpdir(), `bodycomp-ocr-${Date.now()}-${Math.round(Math.random() * 1e6)}.png`);
-  await sharp(imagePath)
+  let pipeline = sharp(imagePath);
+  if (region) {
+    const { width, height } = await sharp(imagePath).metadata();
+    const top = Math.round(height * region.top);
+    const cropHeight = Math.min(height - top, Math.round(height * (region.bottom - region.top)));
+    // Region crops are a small vertical slice of the full screenshot — upscale before the rest of
+    // the pipeline so small card text gets more pixels per character than it would reading the
+    // whole page at native resolution (same motivation as sharpen() below, just applied earlier).
+    pipeline = pipeline.extract({ left: 0, top, width, height: cropHeight }).resize({ width: width * 2 });
+  }
+  await pipeline
     .negate({ alpha: false })
     .greyscale()
     .normalize()
@@ -56,6 +66,87 @@ async function preprocessForOcr(imagePath) {
     .png()
     .toFile(outPath);
   return outPath;
+}
+
+// Coarse vertical slices of the report screenshot matched to its visual sections (profile +
+// weight + score/BMI card, composition silhouette + mass values, the 2-column stat grid, and the
+// weight-suggestions block). OCR'ing each as its own cropped, upscaled image — instead of only
+// reading the whole screenshot in one pass — gives Tesseract a far simpler region to segment and
+// more pixels per character, which measurably helps on the small composition-mass text and on
+// dense single-digit numbers (e.g. the "Standard weight" 6-vs-4 misread that motivated this).
+//
+// The "Body type" quadrant chart section (roughly 78%-85% of the page) is deliberately not its
+// own region — it carries no OCR-able values beyond BMI/body fat, which the header region already
+// covers, and the highlighted cell can only be told apart by background color, not text (see
+// classifyBodyType).
+//
+// These top/bottom fractions are calibrated against a real full-page reference screenshot of this
+// exact report template (profile row -> big weight figure -> body score card -> body composition
+// card -> six stat-pair cards -> body type quadrant chart -> weight suggestions card -> disclaimer
+// text), and include deliberate overlap with their neighbors so a value sitting near a boundary
+// isn't cut in half. If a future screenshot uses a differently-proportioned template (e.g. a
+// different app version or a partial/scrolled capture), these fractions may need retuning — a
+// miscalibrated boundary can make a region crop miss content (same as not having it at all), but
+// per `mergeRegionFields` below it can never inject a wrong value over one the full-page pass
+// already read directly, so the worst case is no improvement, not a regression.
+const REGIONS = [
+  { name: 'header', top: 0, bottom: 0.28, fields: ['weight_kg', 'weight_grade', 'logged_at', 'body_score', 'bmi', 'bmi_grade', 'body_fat_percent', 'body_fat_grade'] },
+  { name: 'composition', top: 0.25, bottom: 0.44, fields: ['body_water_mass_kg', 'fat_mass_kg', 'bone_mineral_mass_kg', 'protein_mass_kg'] },
+  { name: 'statsGrid', top: 0.40, bottom: 0.80, fields: ['muscle_mass_kg', 'muscle_mass_grade', 'muscle_percent', 'muscle_percent_grade', 'body_water_percent', 'body_water_percent_grade', 'protein_percent', 'protein_percent_grade', 'bone_mineral_percent', 'bone_mineral_percent_grade', 'skeletal_muscle_kg', 'skeletal_muscle_grade', 'visceral_fat_rating', 'visceral_fat_grade', 'bmr_kcal', 'bmr_grade', 'waist_hip_ratio', 'waist_hip_grade', 'body_age', 'fat_free_weight_kg', 'heart_rate_bpm', 'heart_rate_grade'] },
+  { name: 'weightSuggestions', top: 0.88, bottom: 1, fields: ['standard_weight_kg', 'weight_control_kg', 'fat_control_kg', 'muscle_control_text'] }
+];
+
+async function ocrRegion(imagePath, region) {
+  const processedPath = await preprocessForOcr(imagePath, region);
+  try {
+    // psm 4 ("assume a single column of text of variable sizes") suits an isolated section crop
+    // far better than the psm 3 used for the full page, which has to guess a much more complex
+    // multi-column layout. It specifically beats psm 6 ("a single uniform block of text") on the
+    // header region: psm 6's "uniform" assumption breaks on that region's huge weight digits sitting
+    // right next to normal-sized text, and it drops the big number entirely — verified head-to-head
+    // against a rendered test report, psm 4 reads it correctly while psm 6 does not.
+    return await tesseract.recognize(processedPath, { lang: 'eng', oem: 1, psm: 4 });
+  } finally {
+    fs.unlink(processedPath).catch(() => {});
+  }
+}
+
+// Folds each region's independently-parsed fields into the full-page baseline result:
+//  - a region value only ever fills a null baseline field, or replaces a baseline field the
+//    full-page parse itself flagged as derived/guessed (see `derivedFields` in
+//    parseBodyCompositionText) — a direct region read outranks a same-page heuristic guess.
+//  - a region value that is itself derived (e.g. the same weight-decimal identity trick, run on a
+//    smaller crop) is never used — a heuristic guess from a lower-resolution source is no more
+//    trustworthy than the one already tried on the full page.
+//  - it never overwrites a baseline field that was already read directly and confidently, even if
+//    the region disagrees — with no ground truth to arbitrate, silently swapping one guess for
+//    another is not obviously an improvement. Instead the disagreement is recorded in
+//    `uncertain_fields` so the confirm form can flag it for the user to check against the photo.
+export function mergeRegionFields(baseline, regionResults) {
+  const derived = new Set(baseline.derived_fields || []);
+  const uncertain = new Set();
+  for (const { region, fields } of regionResults) {
+    if (!fields) continue;
+    const regionDerived = new Set(fields.derived_fields || []);
+    for (const key of region.fields) {
+      const regionValue = fields[key];
+      if (regionValue === null || regionValue === undefined || regionDerived.has(key)) continue;
+      const baselineValue = baseline[key];
+      if (baselineValue === null || baselineValue === undefined) {
+        baseline[key] = regionValue;
+      } else if (derived.has(key)) {
+        baseline[key] = regionValue;
+        derived.delete(key);
+      } else if (typeof regionValue === 'number' && typeof baselineValue === 'number' && Math.abs(regionValue - baselineValue) > 0.05) {
+        uncertain.add(key);
+      } else if (regionValue !== baselineValue) {
+        uncertain.add(key);
+      }
+    }
+  }
+  baseline.derived_fields = [...derived];
+  baseline.uncertain_fields = [...uncertain];
+  return baseline;
 }
 
 // Every value on the report is either a plain non-negative measurement or (for the three
@@ -103,11 +194,14 @@ function isDeltaNoise(value) {
   return value !== null && value >= 100 && value <= 109 && Number.isInteger(value);
 }
 
-// Tesseract sometimes drops the decimal point on a 2-3 digit integer ("49.9" -> "499"). Only
-// applied as a fallback when the raw reading fails the plausible range for this metric — if the
-// raw value already made sense, trust it as-is rather than second-guessing a correct read.
+// Tesseract sometimes drops the decimal point on a 2-4 digit integer ("49.9" -> "499", "4.4" ->
+// "44"). Only applied as a fallback when the raw reading fails the plausible range for this
+// metric — if the raw value already made sense, trust it as-is rather than second-guessing a
+// correct read. A bare single digit ("6") is never recovered this way — every single-digit field
+// on this report (visceral fat rating, body age's tens excluded, heart rate) is a genuinely whole
+// number, so there's no way to tell a real "6" from a decimal-dropped one, unlike 2+ digit values.
 function recoverLostDecimal(rawValue) {
-  if (rawValue === null || !Number.isInteger(rawValue) || rawValue < 100 || rawValue > 9999) return null;
+  if (rawValue === null || !Number.isInteger(rawValue) || rawValue < 10 || rawValue > 9999) return null;
   const str = String(rawValue);
   return Number(`${str.slice(0, -1)}.${str.slice(-1)}`);
 }
@@ -210,10 +304,21 @@ class ReportParser {
   }
 
   // Paired row: `defs` is [{key, label, hasGrade}, {key, label, hasGrade}] in on-report order.
+  //
+  // Both labels of a real row sit within ~30 characters of each other in every sample seen (they're
+  // two cards on the same visual line). If one label is OCR-corrupted (e.g. "Muscle mass" misread
+  // as "Muscla mass"), `findLabel`'s case-insensitive substring search can skip past the corrupted
+  // occurrence and match the *next* coincidental occurrence of that phrase somewhere unrelated much
+  // further down the report (a real case: "Muscle mass" matching inside "Skeletal muscle mass" from
+  // a different row entirely). That silently pulls every unclaimed number between the two mismatched
+  // positions — including values that belong to completely different fields — into this pair. Since
+  // a genuine pair's two labels are never far apart, a wide gap between the two matches is treated
+  // exactly like "label not found" rather than trusted.
   pair(defs) {
     const searchFrom = this.pos;
     const found = defs.map((d) => findLabel(this.text, d.label, searchFrom));
-    if (found.some((f) => f === null)) {
+    const tooFarApart = found.every((f) => f !== null) && Math.abs(found[0].index - found[1].index) > 100;
+    if (found.some((f) => f === null) || tooFarApart) {
       this.advanceTo(defs[defs.length - 1].label);
       return defs.map(() => ({ value: null, grade: null }));
     }
@@ -270,9 +375,27 @@ function extractLoggedAt(text) {
   return Number.isNaN(date.getTime()) ? null : date.toISOString();
 }
 
+// The profile row's "HH:mm" timestamp sits above the weight figure, inside the same window the
+// weight-token search scans (see below) — its hour/minute are themselves 1-2 digit numbers that
+// can coincidentally fall inside the weight plausible range (e.g. "23:27" contributes a bare "27",
+// which passes [20,300] and gets mistaken for the weight if the real weight digits are OCR'd
+// poorly, since the "nearest token before the label" logic then picks it as if it were closer).
+// Matched separately from (and more loosely than) extractLoggedAt's full date+time regex — a
+// mangled date ("0907/2026" with the day/month slash dropped) still carries a clean "HH:mm" tail
+// that's just as capable of producing this false candidate, so it's still worth excluding even
+// when the full date doesn't parse.
+function timestampSpan(text) {
+  const match = text.match(/\b([0-2]?[0-9]):([0-5][0-9])\b/);
+  return match ? { start: match.index, end: match.index + match[0].length } : null;
+}
+
 export function parseBodyCompositionText(text) {
   const result = {};
   const parser = new ReportParser(text);
+  // Fields whose final value was guessed/derived/overridden by a heuristic rather than read
+  // directly off the report with confidence — surfaced to the client so the confirm form can
+  // flag them for extra scrutiny instead of looking identical to a clean OCR read.
+  const derivedFields = new Set();
 
   result.logged_at = extractLoggedAt(text);
 
@@ -280,8 +403,13 @@ export function parseBodyCompositionText(text) {
   const bodyScoreIdx = text.search(/Body score/i);
   const headerEnd = bodyScoreIdx === -1 ? 120 : bodyScoreIdx;
   const headerSlice = text.slice(0, headerEnd);
-  const weightTokens = numberTokens(text, 0, headerEnd).filter((t) => resolveValue('weight_kg', t.value, t.glued) !== null);
-  result.weight_kg = weightTokens.length ? resolveValue('weight_kg', weightTokens[weightTokens.length - 1].value, weightTokens[weightTokens.length - 1].glued) : null;
+  // Start past the profile row's timestamp (see timestampSpan) so its hour/minute digits can't be
+  // mistaken for the weight — only when that timestamp is actually within this header window.
+  const timestamp = timestampSpan(headerSlice);
+  const weightSearchStart = timestamp && timestamp.end <= headerEnd ? timestamp.end : 0;
+  const weightTokens = numberTokens(text, weightSearchStart, headerEnd).filter((t) => resolveValue('weight_kg', t.value, t.glued) !== null);
+  const weightToken = weightTokens.length ? weightTokens[weightTokens.length - 1] : null;
+  result.weight_kg = weightToken ? resolveValue('weight_kg', weightToken.value, weightToken.glued) : null;
   const weightGradeMatch = headerSlice.match(/\b(Standard|Under|Over|High)\b/i);
   result.weight_grade = weightGradeMatch ? weightGradeMatch[1] : null;
   parser.advanceTo('Body score');
@@ -290,15 +418,25 @@ export function parseBodyCompositionText(text) {
   // ("64" huge, ",2" small) — Tesseract sometimes reads the big "64" fine but drops the small
   // decimal entirely ("64;" with the "2" gone, not just misread). That precision is separately
   // encoded in the "Weight suggestions" identity (standard weight = weight + weight control), so
-  // read those two values now and use them to fill in the missing decimal — but only when doing
-  // so doesn't change the integer part, so a corrupted "Standard weight" digit (also seen in
-  // production: "61,6" OCR'd as "67,6") can't inject a wildly wrong weight.
+  // read those two values now and use them to fill in the missing decimal.
+  //
+  // Only fires when the winning weight token genuinely had no decimal point in the raw OCR text
+  // (checked via weightToken.raw, not just "is the parsed value an integer") — a real reading
+  // like "64.0" must never be overwritten by this. Even so, this identity is NOT a reliable
+  // cross-check when the raw weight has no decimal to compare against: a single misread digit in
+  // "Standard weight" (production case: "61,6" OCR'd as "61,4") produces a refined value that
+  // still lands within tolerance of the undecimaled raw weight, because an integer can't
+  // discriminate between candidate decimals near it. So a fill from this path is always flagged
+  // as derived — the confirm form must let the user double check it against the photo, not treat
+  // it as equally trustworthy as a direct OCR read.
   const standardWeightRaw = numberAfterLabel(text, 'Standard weight');
   const weightControlRaw = numberAfterLabel(text, 'Weight control', { signed: true });
-  if (result.weight_kg !== null && standardWeightRaw !== null && weightControlRaw !== null) {
+  const weightTokenHadDecimal = weightToken ? /[.,]/.test(weightToken.raw) : false;
+  if (!weightTokenHadDecimal && result.weight_kg !== null && standardWeightRaw !== null && weightControlRaw !== null) {
     const refined = Number((standardWeightRaw - weightControlRaw).toFixed(1));
     if (plausible('weight_kg', refined) && Math.abs(refined - result.weight_kg) <= 1) {
       result.weight_kg = refined;
+      derivedFields.add('weight_kg');
     }
   }
 
@@ -382,6 +520,7 @@ export function parseBodyCompositionText(text) {
     const derived = Number((result.weight_kg + result.weight_control_kg).toFixed(1));
     if (plausible('standard_weight_kg', derived) && (result.standard_weight_kg === null || Math.abs(result.standard_weight_kg - derived) > 1.5)) {
       result.standard_weight_kg = derived;
+      derivedFields.add('standard_weight_kg');
     }
   }
 
@@ -393,21 +532,46 @@ export function parseBodyCompositionText(text) {
   // an already-read mass value is trusted as-is rather than second-guessed against this estimate.
   if (result.weight_kg !== null) {
     const massFromPercent = (percent) => (percent === null ? null : Number((result.weight_kg * percent / 100).toFixed(1)));
-    if (result.body_water_mass_kg === null) result.body_water_mass_kg = massFromPercent(result.body_water_percent);
-    if (result.fat_mass_kg === null) result.fat_mass_kg = massFromPercent(result.body_fat_percent);
-    if (result.bone_mineral_mass_kg === null) result.bone_mineral_mass_kg = massFromPercent(result.bone_mineral_percent);
-    if (result.protein_mass_kg === null) result.protein_mass_kg = massFromPercent(result.protein_percent);
+    if (result.body_water_mass_kg === null) { result.body_water_mass_kg = massFromPercent(result.body_water_percent); if (result.body_water_mass_kg !== null) derivedFields.add('body_water_mass_kg'); }
+    if (result.fat_mass_kg === null) { result.fat_mass_kg = massFromPercent(result.body_fat_percent); if (result.fat_mass_kg !== null) derivedFields.add('fat_mass_kg'); }
+    if (result.bone_mineral_mass_kg === null) { result.bone_mineral_mass_kg = massFromPercent(result.bone_mineral_percent); if (result.bone_mineral_mass_kg !== null) derivedFields.add('bone_mineral_mass_kg'); }
+    if (result.protein_mass_kg === null) { result.protein_mass_kg = massFromPercent(result.protein_percent); if (result.protein_mass_kg !== null) derivedFields.add('protein_mass_kg'); }
   }
 
+  if (result.body_type_zone !== null) derivedFields.add('body_type_zone');
+
+  result.derived_fields = [...derivedFields];
   return result;
 }
 
 export async function ocrBodyCompositionImage(imagePath) {
   const processedPath = await preprocessForOcr(imagePath);
+  let text;
   try {
-    const text = await tesseract.recognize(processedPath, { lang: 'eng', oem: 1, psm: 3 });
-    return { fields: parseBodyCompositionText(text), rawText: text };
+    text = await tesseract.recognize(processedPath, { lang: 'eng', oem: 1, psm: 3 });
   } finally {
     fs.unlink(processedPath).catch(() => {});
   }
+  const baseline = parseBodyCompositionText(text);
+
+  // Re-OCR each report section on its own cropped, upscaled image and use it to fill in or
+  // correct the full-page pass (see REGIONS and mergeRegionFields above). These are independent
+  // tesseract CLI invocations, so run them in parallel rather than adding their cost serially on
+  // top of the already-slow full-page pass.
+  const regionResults = await Promise.all(REGIONS.map(async (region) => {
+    try {
+      const regionText = await ocrRegion(imagePath, region);
+      return { region, text: regionText, fields: parseBodyCompositionText(regionText) };
+    } catch {
+      return { region, text: '', fields: null };
+    }
+  }));
+  const fields = mergeRegionFields(baseline, regionResults);
+
+  // Exposed alongside rawText purely for debugging a miscalibrated REGIONS boundary (see comment
+  // above it) — if a region's crop lands on the wrong part of the report, its raw text makes that
+  // obvious immediately instead of having to guess from the merged field values alone.
+  const rawRegionText = Object.fromEntries(regionResults.map(({ region, text: t }) => [region.name, t]));
+
+  return { fields, rawText: text, rawRegionText };
 }
