@@ -92,7 +92,7 @@ Recommended Unraid container settings:
 
 | Setting | Value |
 |---|---|
-| Repository | `ghcr.io/thaihoang987/gym-app:latest` if you publish an image, or build from this repo with Docker Compose |
+| Repository | `ghcr.io/thaihoang987/gym-note:latest` if you publish an image, or build from this repo with Docker Compose |
 | WebUI | `http://[IP]:[PORT:3001]/` |
 | Network | `bridge` |
 | Web Port | Container `3001` to host `3001` |
@@ -134,22 +134,22 @@ For a full Unraid/server backup, also keep the appdata folder:
 
 This repo includes a GitHub Actions workflow that builds and pushes Docker images to GitHub Container Registry:
 
-- Stable image: `ghcr.io/thaihoang987/gym-app:latest` from `main`
-- Beta image: `ghcr.io/thaihoang987/gym-app:beta` from `beta/log-template-metrics`
-- SHA tags: `ghcr.io/thaihoang987/gym-app:sha-<commit>`
-- Release tags: `ghcr.io/thaihoang987/gym-app:0.3.47` when pushing Git tags like `v0.3.47`
+- Stable image: `ghcr.io/thaihoang987/gym-note:latest` from `main`
+- Beta image: `ghcr.io/thaihoang987/gym-note:beta` from `beta/log-template-metrics`
+- SHA tags: `ghcr.io/thaihoang987/gym-note:sha-<commit>`
+- Release tags: `ghcr.io/thaihoang987/gym-note:0.3.47` when pushing Git tags like `v0.3.47`
 - Workflow: `.github/workflows/docker.yml`
 
 If the package is public, Unraid users can run the image directly with:
 
 ```text
-ghcr.io/thaihoang987/gym-app:latest
+ghcr.io/thaihoang987/gym-note:latest
 ```
 
 For beta testing on Unraid, use:
 
 ```text
-ghcr.io/thaihoang987/gym-app:beta
+ghcr.io/thaihoang987/gym-note:beta
 ```
 
 If the package is private, open the package page on GitHub and set visibility to public, or log in to GHCR from Unraid before pulling.
@@ -162,7 +162,7 @@ This repo includes an Unraid Community Applications template:
 
 Publishing checklist:
 
-1. Push to `main` and confirm the Docker workflow publishes `ghcr.io/thaihoang987/gym-app:latest`.
+1. Push to `main` and confirm the Docker workflow publishes `ghcr.io/thaihoang987/gym-note:latest`.
 2. In GitHub Packages, set the GHCR package visibility to **Public**.
 3. Test install on your own Unraid server with `/mnt/user/appdata/gym-app/data` mapped to `/app/data`.
 4. Optional but recommended: create an Unraid forum support topic and update the `<Support>` link in `unraid-template.xml`.

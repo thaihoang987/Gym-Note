@@ -21,8 +21,8 @@ ENV NODE_ENV=production
 ENV PORT=3001
 RUN apk add --no-cache tesseract-ocr tesseract-ocr-data-eng
 
-LABEL net.unraid.docker.icon="https://raw.githubusercontent.com/thaihoang987/Gym-app/main/public/pwa-512.png"
-LABEL org.opencontainers.image.source="https://github.com/thaihoang987/Gym-app"
+LABEL net.unraid.docker.icon="https://raw.githubusercontent.com/thaihoang987/Gym-Note/main/public/pwa-512.png"
+LABEL org.opencontainers.image.source="https://github.com/thaihoang987/Gym-Note"
 LABEL org.opencontainers.image.description="Gym App - self-hosted workout tracker"
 LABEL org.opencontainers.image.licenses="MIT"
 
