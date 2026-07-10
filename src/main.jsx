@@ -8071,18 +8071,20 @@ function BodyCompositionSection({ userId, settings }) {
       value: row[metricDef.valueField],
       grade: metricDef.gradeField ? row[metricDef.gradeField] : null
     }));
-  const rangedRows = filterByRange(rows, 'logged_at', rangeKey);
   const chartDomain = chartRangeDomain(rangeKey);
   const latestRow = rows[rows.length - 1] || null;
   const delta = rows.length ? bodyCompositionDelta(rows, rows.length - 1) : null;
 
   const tickDateFormat = (value) => formatDate(value, settings, { day: '2-digit', month: '2-digit' });
+  // The range buttons (3 days / 7 days / ...) only set where the chart *starts* zoomed to — the
+  // full history always sits in `series.data` so a one-finger drag on the chart itself pans past
+  // that window into older data, like a native health-app timeline. That's why there's no visible
+  // slider bar: panning happens by touching the plot directly (`dataZoom` type "inside"), not a
+  // separate control underneath it.
   const chartOption = useMemo(() => ({
-    grid: { top: 24, right: 18, bottom: 48, left: 44 },
+    grid: { top: 24, right: 18, bottom: 32, left: 44 },
     xAxis: {
       type: 'time',
-      min: chartDomain[0] === 'auto' ? undefined : chartDomain[0],
-      max: chartDomain[1] === 'auto' ? undefined : chartDomain[1],
       axisLine: { lineStyle: { color: '#6b668a' } },
       axisLabel: { color: '#6b668a', formatter: tickDateFormat, hideOverlap: true }
     },
@@ -8101,20 +8103,25 @@ function BodyCompositionSection({ userId, settings }) {
         return `${tickDateFormat(point.value[0])}<br/>${t(metricDef.labelKey)}: <strong>${point.value[1]} ${metricDef.unit}</strong>`;
       }
     },
-    dataZoom: [
-      { type: 'inside', xAxisIndex: 0 },
-      { type: 'slider', xAxisIndex: 0, height: 22, bottom: 4, borderColor: '#e2e8f0', fillerColor: 'rgba(37, 99, 235, 0.12)', handleStyle: { color: '#2563eb' }, labelFormatter: tickDateFormat }
-    ],
+    dataZoom: [{
+      type: 'inside',
+      xAxisIndex: 0,
+      startValue: chartDomain[0] === 'auto' ? undefined : chartDomain[0],
+      endValue: chartDomain[1] === 'auto' ? undefined : chartDomain[1],
+      zoomOnMouseWheel: true,
+      moveOnMouseMove: true,
+      moveOnMouseWheel: false
+    }],
     series: [{
       type: 'line',
       name: t(metricDef.labelKey),
-      data: rangedRows.map((row) => [row.ts, row.value]),
+      data: rows.map((row) => [row.ts, row.value]),
       color: '#2563eb',
       lineStyle: { width: 3 },
       symbolSize: 6,
       smooth: true
     }]
-  }), [rangedRows, chartDomain, metricDef, settings]);
+  }), [rows, chartDomain, metricDef, settings]);
 
   if (!logs.length) return null;
 
@@ -8149,7 +8156,7 @@ function BodyCompositionSection({ userId, settings }) {
           )}
         </button>
       )}
-      {rangedRows.length ? (
+      {rows.length ? (
         <EChart option={chartOption} height={240} />
       ) : <p className="text-slate-600">{t('bodycomp_no_data')}</p>}
       {detailOpen && latestRow && (
