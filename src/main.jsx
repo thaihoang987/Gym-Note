@@ -64,6 +64,7 @@ import {
   TEMPLATE_DEFS as LOG_TEMPLATE_DEFS
 } from '../shared/logTemplates.js';
 import { BODY_COMPOSITION_METRIC_DEFS, BODY_TYPE_ZONES, gradeColorTier, GRADE_TIER_COLORS } from '../shared/bodyCompositionMetrics.js';
+import { DEFAULT_METRIC_BOUNDARIES, metricAnalysis, metricDescription } from '../shared/bodyCompositionCopy.js';
 
 // Registers only the chart type/components actually used (line chart + zoom slider) instead of
 // pulling in all of echarts, which keeps this out of the "chunks larger than 500kB" bundle warning.
@@ -3234,9 +3235,13 @@ function BodyWeightInput({ userId, settings }) {
   const [unit, setUnit] = useState(settings.default_weight_unit || 'kg');
   const [history, setHistory] = useState([]);
   const [scanOpen, setScanOpen] = useState(false);
+  const [compLogs, setCompLogs] = useState([]);
+  const [reportIndex, setReportIndex] = useState(null);
   const loadHistory = () => api(`/api/body-weight/recent?userId=${userId}`).then(setHistory);
+  const loadCompLogs = () => api(`/api/body-composition?userId=${userId}`).then(setCompLogs);
   useEffect(() => {
     loadHistory();
+    loadCompLogs();
   }, [userId]);
   const save = async () => {
     if (!weight) return;
@@ -3271,7 +3276,34 @@ function BodyWeightInput({ userId, settings }) {
           </div>
         ))}
       </div>
-      {scanOpen && <BodyCompositionScanModal userId={userId} onClose={() => setScanOpen(false)} onSaved={loadHistory} />}
+      {compLogs.length > 0 && (
+        <div className="weight-history mt-3">
+          <p className="border-b border-stone-200 pb-1 text-xs font-bold uppercase text-slate-500">{t('bodycomp_reports_list')}</p>
+          {compLogs.slice().reverse().slice(0, 5).map((row) => (
+            <button
+              key={row.id}
+              type="button"
+              className="grid w-full grid-cols-[1fr_auto_auto] items-center gap-3 border-b border-stone-100 py-2 text-left text-sm last:border-b-0"
+              onClick={() => setReportIndex(compLogs.findIndex((r) => r.id === row.id))}
+            >
+              <span className="font-semibold text-slate-700">{formatDate(row.logged_at, settings)}</span>
+              <span className="font-black text-slate-950">{row.weight_kg ?? '--'} kg</span>
+              <ChevronRight size={16} className="text-slate-400" />
+            </button>
+          ))}
+        </div>
+      )}
+      {scanOpen && <BodyCompositionScanModal userId={userId} onClose={() => setScanOpen(false)} onSaved={() => { loadHistory(); loadCompLogs(); }} />}
+      {reportIndex !== null && (
+        <BodyCompositionReportPage
+          userId={userId}
+          settings={settings}
+          logs={compLogs}
+          index={reportIndex}
+          onNavigate={setReportIndex}
+          onClose={() => setReportIndex(null)}
+        />
+      )}
     </div>
   );
 }
@@ -8008,13 +8040,18 @@ function bodyCompositionDelta(rows, index) {
   return Number((current - previous).toFixed(2));
 }
 
-function BodyCompositionDetailPopup({ metricDef, latestRow, delta, boundaries, t, onClose }) {
+function BodyCompositionDetailPopup({ metricDef, latestRow, delta, boundaries, lang, t, onClose }) {
   const tier = gradeColorTier(latestRow?.grade);
-  const numericBoundaries = (boundaries || []).filter((b) => Number.isFinite(Number(b.max)));
+  const effectiveBoundaries = (boundaries && boundaries.length ? boundaries : DEFAULT_METRIC_BOUNDARIES[metricDef.key]) || [];
+  const numericBoundaries = effectiveBoundaries.filter((b) => Number.isFinite(Number(b.max)));
   const maxBoundary = numericBoundaries.length ? Math.max(...numericBoundaries.map((b) => Number(b.max))) * 1.15 : null;
+  const value = Number(latestRow?.value);
+  const markerPercent = maxBoundary && Number.isFinite(value) ? Math.min(100, Math.max(0, (value / maxBoundary) * 100)) : null;
+  const analysis = metricAnalysis(metricDef.key, tier, lang);
+  const description = metricDescription(metricDef.key, lang);
   return (
     <div className="fixed inset-0 z-[10000] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onClick={onClose}>
-      <div className="w-full max-w-md rounded-2xl bg-white shadow-2xl p-4" onClick={(e) => e.stopPropagation()}>
+      <div className="w-full max-w-md max-h-[85vh] overflow-y-auto rounded-2xl bg-white shadow-2xl p-4" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-start justify-between">
           <div>
             <div className="flex items-baseline gap-1">
@@ -8037,6 +8074,11 @@ function BodyCompositionDetailPopup({ metricDef, latestRow, delta, boundaries, t
         )}
         {numericBoundaries.length > 0 && (
           <div className="mt-4">
+            {markerPercent !== null && (
+              <div className="relative h-3" style={{ marginLeft: `${markerPercent}%` }}>
+                <div className="absolute -top-1 left-0 h-0 w-0 -translate-x-1/2 border-x-[5px] border-t-[6px] border-x-transparent border-t-slate-950" />
+              </div>
+            )}
             <div className="flex h-3 w-full overflow-hidden rounded-full">
               {numericBoundaries.map((b, i) => {
                 const prevMax = i === 0 ? 0 : Number(numericBoundaries[i - 1].max);
@@ -8049,6 +8091,20 @@ function BodyCompositionDetailPopup({ metricDef, latestRow, delta, boundaries, t
                 <span key={b.label}><span className="inline-block h-2 w-2 rounded-full mr-1" style={{ background: GRADE_TIER_COLORS[gradeColorTier(b.label)] || '#94a3b8' }} />{b.label} &lt;{b.max}</span>
               ))}
             </div>
+          </div>
+        )}
+        {analysis && (
+          <>
+            <div className="mt-4 border-t border-slate-200 pt-3">
+              <p className="text-sm font-bold text-slate-800">{t('bodycomp_analysis_title')}</p>
+              <p className="mt-1 text-sm text-slate-600">{analysis}</p>
+            </div>
+          </>
+        )}
+        {description && (
+          <div className="mt-3 border-t border-slate-200 pt-3">
+            <p className="text-sm font-bold text-slate-800">{t(metricDef.labelKey)}</p>
+            <p className="mt-1 text-sm text-slate-600">{description}</p>
           </div>
         )}
         <button className="ghost-btn w-full mt-4" onClick={onClose}>{t('close')}</button>
@@ -8087,8 +8143,273 @@ function EChart({ option, height = 240 }) {
   return <div ref={containerRef} style={{ width: '100%', height }} />;
 }
 
+function bodyCompDefFor(key) {
+  return BODY_COMPOSITION_METRIC_DEFS.find((d) => d.key === key) || null;
+}
+
+// One metric's own value/grade/delta, read off a single saved body_composition_logs row (as
+// opposed to `bodyCompositionDelta`, which walks the full per-metric trend series built for the
+// Analytics chart) — used by the read-only report page below, which shows every metric from one
+// specific scan side by side rather than one metric's history over time.
+function bodyCompRowFor(def, row) {
+  if (!def || !row) return { value: null, grade: null };
+  return { value: row[def.valueField] ?? null, grade: def.gradeField ? row[def.gradeField] ?? null : null };
+}
+
+function bodyCompDeltaFor(def, row, prevRow) {
+  if (!def || !row || !prevRow) return null;
+  const current = row[def.valueField];
+  const previous = prevRow[def.valueField];
+  if (current === null || current === undefined || previous === null || previous === undefined) return null;
+  return Number((Number(current) - Number(previous)).toFixed(2));
+}
+
+// A compact, dark, read-only stat card matching the source scale app's own report styling (as
+// opposed to `BodyCompMetricCard`, which is editable and light-themed for the scan confirm form).
+// Tapping it opens the shared `BodyCompositionDetailPopup` for that metric, when it has a grade to
+// show detail for — fields like body age or fat-free weight have no grade on this report (see
+// `BODY_COMPOSITION_METRIC_DEFS`), so they render the same way but aren't tappable.
+function ReportStatCard({ label, value, unit, grade, delta, onClick }) {
+  const tier = gradeColorTier(grade);
+  const Tag = onClick ? 'button' : 'div';
+  return (
+    <Tag type={onClick ? 'button' : undefined} className="w-full rounded-xl bg-white/5 p-3 text-left" onClick={onClick}>
+      <div className="flex items-baseline gap-1">
+        <strong className="text-xl text-white">{value ?? '--'}</strong>
+        {unit && <span className="text-xs text-slate-400">{unit}</span>}
+        {delta !== null && delta !== undefined && delta !== 0 && (
+          <span className="text-xs text-slate-400">{delta > 0 ? '↑' : '↓'}{Math.abs(delta)}</span>
+        )}
+      </div>
+      <p className="mt-0.5 text-xs text-slate-400">{label}</p>
+      {grade && <p className="text-xs font-bold" style={{ color: tier ? GRADE_TIER_COLORS[tier] : '#94a3b8' }}>{grade}</p>}
+    </Tag>
+  );
+}
+
+// Approximates the source scale app's 10-zone body-type quadrant chart (BMI on the Y axis, body
+// fat percentage on the X axis) as a CSS grid, matching its real uneven layout: "Fit" spans the
+// two middle-BMI rows in the middle column, and "Invisibly obese" spans the two low-BMI rows in
+// the high-body-fat column — everything else is one cell. `zone` is the value already saved on
+// the log row (from OCR or the user's own correction in the scan confirm form), so this only
+// needs to highlight the matching cell(s), not recompute the classification itself.
+function BodyTypeGrid({ zone, t }) {
+  const cells = [
+    { area: 'athletic', zone: 'Athletic' }, { area: 'overweight1', zone: 'Overweight' }, { area: 'obese', zone: 'Obese' },
+    { area: 'muscular', zone: 'Muscular' }, { area: 'fit', zone: 'Fit' }, { area: 'overweight2', zone: 'Overweight' },
+    { area: 'slimmuscular', zone: 'Slim & muscular' }, { area: 'slim', zone: 'Slim' }, { area: 'invisiblyobese', zone: 'Invisibly obese' },
+    { area: 'lean', zone: 'Lean' }, { area: 'underweight', zone: 'Underweight' }
+  ];
+  return (
+    <div className="mt-2">
+      <div
+        className="grid gap-0.5"
+        style={{
+          gridTemplateAreas: '"athletic overweight1 obese" "muscular fit overweight2" "slimmuscular slim invisiblyobese" "lean underweight invisiblyobese"',
+          gridTemplateColumns: 'repeat(3, 1fr)',
+          gridTemplateRows: 'repeat(4, 56px)'
+        }}
+      >
+        {cells.map((c) => {
+          const active = zone === c.zone;
+          return (
+            <div
+              key={c.area}
+              className={`flex items-center justify-center rounded-md p-1 text-center text-[11px] leading-tight ${active ? 'bg-emerald-500 text-white font-bold' : 'bg-white/10 text-slate-400'}`}
+              style={{ gridArea: c.area }}
+            >
+              {c.zone}
+            </div>
+          );
+        })}
+      </div>
+      <div className="mt-1 flex justify-between text-[10px] text-slate-500">
+        <span>{t('bodycomp_body_type')}</span>
+      </div>
+    </div>
+  );
+}
+
+// Full-screen, read-only, dark-themed view of a single saved scan — everything from one weigh-in
+// laid out together, matching the source Xiaomi/Zepp app's own "Weight report" page (as opposed to
+// `BodyCompositionSection`'s Analytics view, which shows one metric's trend across every scan).
+// `logs` is the full history sorted oldest-first (so `index - 1` is "the previous scan" for delta
+// text); `onNavigate` lets the caller swap which entry is shown without unmounting this page.
+function BodyCompositionReportPage({ userId, settings, logs, index, onNavigate, onClose }) {
+  const t = useLang();
+  const lang = settings?.locale?.split('-')[0] || 'en';
+  const [ranges, setRanges] = useState({});
+  const [popupKey, setPopupKey] = useState(null);
+
+  useEffect(() => {
+    api(`/api/body-composition/ranges?userId=${userId}`).then(setRanges);
+  }, [userId]);
+
+  const row = logs[index];
+  const prevRow = index > 0 ? logs[index - 1] : null;
+  const daysAgo = prevRow ? Math.round((parseServerDate(row.logged_at) - parseServerDate(prevRow.logged_at)) / 86400000) : null;
+
+  if (!row) return null;
+
+  const weightDelta = prevRow && row.weight_kg != null && prevRow.weight_kg != null ? Number((row.weight_kg - prevRow.weight_kg).toFixed(2)) : null;
+  const bodyScore = row.body_score;
+  const bodyScoreText = bodyScore === null || bodyScore === undefined ? null
+    : bodyScore >= 80 ? t('bodycomp_body_score_healthy')
+    : bodyScore >= 60 ? t('bodycomp_body_score_ok')
+    : t('bodycomp_body_score_low');
+
+  const pairKeys = [
+    ['muscle_mass', 'muscle_percent'],
+    ['body_water_percent', 'protein_percent'],
+    ['bone_mineral_percent', 'skeletal_muscle'],
+    ['visceral_fat', 'bmr'],
+    ['waist_hip', 'body_age'],
+    ['fat_free_weight', 'heart_rate']
+  ];
+  const massKeys = ['body_water_mass', 'fat_mass', 'bone_mineral_mass', 'protein_mass'];
+
+  const openPopup = (key) => bodyCompDefFor(key)?.gradeField && setPopupKey(key);
+  const popupDef = popupKey ? bodyCompDefFor(popupKey) : null;
+
+  return (
+    <div className="fixed inset-0 z-[10000] overflow-y-auto bg-[#12151a]">
+      <div className="mx-auto min-h-screen w-full max-w-md px-4 pb-10 pt-5 text-white">
+        <div className="mb-4 flex items-center justify-between">
+          <button className="icon-btn text-white" onClick={onClose}><X /></button>
+          <h3 className="font-bold text-slate-200">{t('bodycomp_report_title')}</h3>
+          <div className="w-9" />
+        </div>
+
+        <div className="flex items-center justify-center gap-3">
+          {onNavigate && (
+            <button className="icon-btn text-white disabled:opacity-30" disabled={index <= 0} onClick={() => onNavigate(index - 1)}>
+              <ChevronRight className="rotate-180" size={18} />
+            </button>
+          )}
+          <div className="text-center">
+            <p className="text-xs text-slate-400">{formatDateTime(row.logged_at, settings)}</p>
+            <div className="flex items-baseline justify-center gap-1">
+              <strong className="text-5xl">{row.weight_kg ?? '--'}</strong>
+              <span className="text-sm text-slate-400">kg</span>
+            </div>
+            <p className="mt-1 text-xs text-slate-400">
+              {row.weight_grade && <span className="mr-1 font-bold" style={{ color: GRADE_TIER_COLORS[gradeColorTier(row.weight_grade)] || '#94a3b8' }}>{row.weight_grade}</span>}
+              {daysAgo !== null && weightDelta !== null && (weightDelta === 0 ? t('bodycomp_no_change', daysAgo) : t('bodycomp_report_delta', Math.abs(weightDelta), 'kg', daysAgo, weightDelta > 0))}
+            </p>
+          </div>
+          {onNavigate && (
+            <button className="icon-btn text-white disabled:opacity-30" disabled={index >= logs.length - 1} onClick={() => onNavigate(index + 1)}>
+              <ChevronRight size={18} />
+            </button>
+          )}
+        </div>
+
+        {bodyScore !== null && bodyScore !== undefined && (
+          <div className="mt-4 rounded-xl bg-white/5 p-3">
+            <p className="text-xs text-slate-400">{t('bodycomp_body_score')}</p>
+            <div className="mt-1 flex items-start gap-3">
+              <strong className="text-2xl">{bodyScore}</strong>
+              {bodyScoreText && <p className="text-xs text-slate-400">{bodyScoreText}</p>}
+            </div>
+            <div className="mt-2 grid grid-cols-2 gap-2">
+              <ReportStatCard label={t(bodyCompDefFor('bmi').labelKey)} unit="" {...bodyCompRowFor(bodyCompDefFor('bmi'), row)} delta={bodyCompDeltaFor(bodyCompDefFor('bmi'), row, prevRow)} onClick={() => openPopup('bmi')} />
+              <ReportStatCard label={t(bodyCompDefFor('body_fat').labelKey)} unit="%" {...bodyCompRowFor(bodyCompDefFor('body_fat'), row)} delta={bodyCompDeltaFor(bodyCompDefFor('body_fat'), row, prevRow)} onClick={() => openPopup('body_fat')} />
+            </div>
+          </div>
+        )}
+
+        {massKeys.some((key) => row[bodyCompDefFor(key).valueField] !== null && row[bodyCompDefFor(key).valueField] !== undefined) && (
+          <div className="mt-3 rounded-xl bg-white/5 p-3">
+            <p className="mb-2 text-xs text-slate-400">{t('bodycomp_section_title')}</p>
+            <div className="grid grid-cols-2 gap-x-4 gap-y-2">
+              {massKeys.map((key) => {
+                const def = bodyCompDefFor(key);
+                const value = row[def.valueField];
+                if (value === null || value === undefined) return null;
+                return (
+                  <div key={key} className="flex items-baseline gap-1">
+                    <strong className="text-base">{value}</strong>
+                    <span className="text-xs text-slate-400">{def.unit}</span>
+                    <span className="ml-1 text-xs text-slate-500">{t(def.labelKey)}</span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        <div className="mt-3 grid grid-cols-2 gap-2">
+          {pairKeys.flat().map((key) => {
+            const def = bodyCompDefFor(key);
+            const { value, grade } = bodyCompRowFor(def, row);
+            if (value === null || value === undefined) return null;
+            return (
+              <ReportStatCard
+                key={key}
+                label={t(def.labelKey)}
+                unit={def.unit}
+                value={value}
+                grade={grade}
+                delta={bodyCompDeltaFor(def, row, prevRow)}
+                onClick={def.gradeField ? () => openPopup(key) : undefined}
+              />
+            );
+          })}
+        </div>
+
+        {row.body_type_zone && (
+          <div className="mt-3 rounded-xl bg-white/5 p-3">
+            <BodyTypeGrid zone={row.body_type_zone} t={t} />
+          </div>
+        )}
+
+        {(row.standard_weight_kg !== null && row.standard_weight_kg !== undefined) && (
+          <div className="mt-3 space-y-2 rounded-xl bg-white/5 p-3">
+            <p className="text-xs text-slate-400">{t('bodycomp_weight_suggestions')}</p>
+            <div className="flex items-baseline justify-between text-sm">
+              <span className="text-slate-400">{t('bodycomp_standard_weight')}</span>
+              <strong>{row.standard_weight_kg} kg</strong>
+            </div>
+            {row.weight_control_kg !== null && row.weight_control_kg !== undefined && (
+              <div className="flex items-baseline justify-between text-sm">
+                <span className="text-slate-400">{t('bodycomp_weight_control')}</span>
+                <strong>{row.weight_control_kg} kg</strong>
+              </div>
+            )}
+            {row.fat_control_kg !== null && row.fat_control_kg !== undefined && (
+              <div className="flex items-baseline justify-between text-sm">
+                <span className="text-slate-400">{t('bodycomp_fat_control')}</span>
+                <strong>{row.fat_control_kg} kg</strong>
+              </div>
+            )}
+            {row.muscle_control_text && (
+              <div className="flex items-baseline justify-between text-sm">
+                <span className="text-slate-400">{t('bodycomp_muscle_control')}</span>
+                <strong>{row.muscle_control_text}</strong>
+              </div>
+            )}
+          </div>
+        )}
+
+        {popupDef && (
+          <BodyCompositionDetailPopup
+            metricDef={popupDef}
+            latestRow={bodyCompRowFor(popupDef, row)}
+            delta={bodyCompDeltaFor(popupDef, row, prevRow)}
+            boundaries={ranges[popupDef.key]}
+            lang={lang}
+            t={t}
+            onClose={() => setPopupKey(null)}
+          />
+        )}
+      </div>
+    </div>
+  );
+}
+
 function BodyCompositionSection({ userId, settings }) {
   const t = useLang();
+  const lang = settings?.locale?.split('-')[0] || 'en';
   const rangeOptions = getRangeOptions(t);
   const [logs, setLogs] = useState([]);
   const [ranges, setRanges] = useState({});
@@ -8205,6 +8526,7 @@ function BodyCompositionSection({ userId, settings }) {
           latestRow={latestRow}
           delta={delta}
           boundaries={ranges[metricKey]}
+          lang={lang}
           t={t}
           onClose={() => setDetailOpen(false)}
         />
