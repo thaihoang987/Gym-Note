@@ -3335,14 +3335,17 @@ function BodyCompositionScanModal({ userId, onClose, onSaved }) {
     setError('');
     try {
       const dataUrl = await fileToDataUrl(file);
-      const result = await api('/api/body-composition/scan', { method: 'POST', body: JSON.stringify({ photo: dataUrl }) });
+      // Image preprocessing (sharp) + Tesseract OCR is CPU-bound and routinely takes well past
+      // the default 8s api() timeout on modest NAS/self-hosted hardware — give it real headroom.
+      const result = await api('/api/body-composition/scan', { method: 'POST', body: JSON.stringify({ photo: dataUrl }), timeoutMs: 90000 });
       setPhotoPath(result.photoPath);
       setFields(result.fields);
       setLoggedAt(toDatetimeLocalValue(result.fields?.logged_at));
       setRawText(result.rawText || '');
       setStep('confirm');
     } catch (err) {
-      setError(err.message || 'Scan thất bại');
+      const timedOut = err.name === 'AbortError' || /aborted/i.test(err.message || '');
+      setError(timedOut ? t('bodycomp_scan_timeout') : (err.message || 'Scan thất bại'));
       setStep('pick');
     }
   };
