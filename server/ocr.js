@@ -3,6 +3,7 @@ import sharp from 'sharp';
 import os from 'node:os';
 import path from 'node:path';
 import fs from 'node:fs/promises';
+import { classifyBodyType } from '../shared/bodyCompositionMetrics.js';
 
 // Xiaomi Mi Body Composition Scale screenshots use a comma as the decimal separator
 // ("64,2", "-2,6") because the phone's locale is Vietnamese — parseFloat alone would
@@ -360,9 +361,10 @@ export function parseBodyCompositionText(text) {
 
   // The highlighted body-type cell is shown by background color, not distinct text — OCR only
   // sees the same 10 zone labels every time regardless of which one is actually lit up, so it
-  // can't be read reliably from text alone. Left null here; the confirm form has a dropdown of
-  // the 10 zones for the user to pick from looking at the photo.
-  result.body_type_zone = null;
+  // can't be read reliably from text alone. Pre-fill a best-effort guess from BMI + body fat
+  // percent instead (see classifyBodyType) — the confirm form's dropdown still lets the user
+  // correct it by eye if the guess lands on a boundary case the 2-axis approximation can't catch.
+  result.body_type_zone = classifyBodyType(result.bmi, result.body_fat_percent);
 
   // Weight suggestions section — inline "Label: Value" layout, opposite direction from above.
   result.standard_weight_kg = standardWeightRaw;
@@ -381,6 +383,20 @@ export function parseBodyCompositionText(text) {
     if (plausible('standard_weight_kg', derived) && (result.standard_weight_kg === null || Math.abs(result.standard_weight_kg - derived) > 1.5)) {
       result.standard_weight_kg = derived;
     }
+  }
+
+  // The composition-mass cards (body water/fat/bone mineral/protein mass, in kg) sit right next
+  // to the body silhouette graphic in small text that Tesseract frequently drops entirely — but
+  // every one of them is the *same number* as its percentage counterpart further down the report
+  // (which OCRs far more reliably, in plain card text away from the graphic), just expressed as a
+  // fraction of body weight instead of a raw percentage. Only fills in what OCR actually missed;
+  // an already-read mass value is trusted as-is rather than second-guessed against this estimate.
+  if (result.weight_kg !== null) {
+    const massFromPercent = (percent) => (percent === null ? null : Number((result.weight_kg * percent / 100).toFixed(1)));
+    if (result.body_water_mass_kg === null) result.body_water_mass_kg = massFromPercent(result.body_water_percent);
+    if (result.fat_mass_kg === null) result.fat_mass_kg = massFromPercent(result.body_fat_percent);
+    if (result.bone_mineral_mass_kg === null) result.bone_mineral_mass_kg = massFromPercent(result.bone_mineral_percent);
+    if (result.protein_mass_kg === null) result.protein_mass_kg = massFromPercent(result.protein_percent);
   }
 
   return result;

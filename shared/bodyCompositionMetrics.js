@@ -50,6 +50,28 @@ export const GRADE_TIER_COLORS = {
 };
 
 // The body-type quadrant chart's highlighted cell is shown only by background color, which OCR
-// can't read — this list backs a manual-pick dropdown instead of a (necessarily unreliable)
-// text-based guess.
+// can't read — this list backs a manual-pick dropdown so the user can correct the pre-filled
+// guess from `classifyBodyType` below by looking at the photo.
 export const BODY_TYPE_ZONES = ['Athletic', 'Overweight', 'Obese', 'Muscular', 'Fit', 'Slim & muscular', 'Slim', 'Invisibly obese', 'Lean', 'Underweight'];
+
+// The quadrant chart plots BMI (Y axis) against body fat percentage (X axis), and the only
+// threshold values printed on the chart itself are 18.5/24.0 (BMI) and 10%/20% (body fat) — both
+// values this module already extracts reliably via OCR, unlike the highlighted cell's color. This
+// reproduces the resulting 3x3 grid so the scan can pre-fill a best-effort zone instead of always
+// leaving the dropdown on "--". It's necessarily an approximation: the real chart shows a finer
+// 4-row split within the normal-BMI band (an extra "Slim & muscular" zone alongside "Muscular"),
+// which can't be derived from just these two printed axes — that nuance collapses into whichever
+// neighboring zone the 3x3 grid picks. Verified against one real scan (BMI 22.7, body fat 17.9%
+// -> "Fit", matching the photo); treat this as a starting point for the user to correct, not a
+// replacement for looking at the photo.
+export function classifyBodyType(bmi, bodyFatPercent) {
+  if (!Number.isFinite(bmi) || !Number.isFinite(bodyFatPercent)) return null;
+  const bmiBand = bmi > 24 ? 'high' : bmi < 18.5 ? 'low' : 'normal';
+  const fatBand = bodyFatPercent > 20 ? 'high' : bodyFatPercent < 10 ? 'low' : 'mid';
+  const grid = {
+    high: { low: 'Athletic', mid: 'Overweight', high: 'Obese' },
+    normal: { low: 'Muscular', mid: 'Fit', high: 'Invisibly obese' },
+    low: { low: 'Lean', mid: 'Slim', high: 'Underweight' }
+  };
+  return grid[bmiBand][fatBand];
+}
