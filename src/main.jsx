@@ -3295,24 +3295,27 @@ function BodyCompMetricCard({ label, value, unit, grade, gradeOptions, onChangeV
         {grade && <span className="shrink-0 text-xs font-bold" style={{ color: tier ? GRADE_TIER_COLORS[tier] : '#64748b' }}>{grade}</span>}
       </button>
       {open && (
-        <div className="mt-2 flex gap-2 border-t border-slate-200 pt-2">
-          <input
-            className="input compact-input w-20"
-            type="number"
-            step="0.1"
-            value={value ?? ''}
-            onChange={(e) => onChangeValue(e.target.value === '' ? null : Number(e.target.value))}
-          />
-          {onChangeGrade && (
-            gradeOptions ? (
-              <select className="input compact-input flex-1" value={grade ?? ''} onChange={(e) => onChangeGrade(e.target.value || null)}>
-                <option value="">--</option>
-                {gradeOptions.map((g) => <option key={g} value={g}>{g}</option>)}
-              </select>
-            ) : (
-              <input className="input compact-input flex-1" type="text" value={grade ?? ''} onChange={(e) => onChangeGrade(e.target.value || null)} />
-            )
-          )}
+        <div className="mt-2 border-t border-slate-200 pt-2">
+          {flagTitle && <p className="mb-2 flex items-start gap-1 text-xs text-amber-700"><AlertTriangle size={12} className="mt-0.5 shrink-0" />{flagTitle}</p>}
+          <div className="flex gap-2">
+            <input
+              className="input compact-input w-20"
+              type="number"
+              step="0.1"
+              value={value ?? ''}
+              onChange={(e) => onChangeValue(e.target.value === '' ? null : Number(e.target.value))}
+            />
+            {onChangeGrade && (
+              gradeOptions ? (
+                <select className="input compact-input flex-1" value={grade ?? ''} onChange={(e) => onChangeGrade(e.target.value || null)}>
+                  <option value="">--</option>
+                  {gradeOptions.map((g) => <option key={g} value={g}>{g}</option>)}
+                </select>
+              ) : (
+                <input className="input compact-input flex-1" type="text" value={grade ?? ''} onChange={(e) => onChangeGrade(e.target.value || null)} />
+              )
+            )}
+          </div>
         </div>
       )}
     </div>
@@ -3443,33 +3446,25 @@ function BodyCompositionScanModal({ userId, onClose, onSaved }) {
                 </select>
               </div>
               <div className="grid grid-cols-[1fr_auto] items-center gap-2">
-                <label className="flex items-center gap-1 text-sm font-semibold text-slate-700">
-                  {t('bodycomp_standard_weight')}
-                  {flagTitleFor('standard_weight_kg') && <AlertTriangle size={12} className="shrink-0 text-amber-600" title={flagTitleFor('standard_weight_kg')} />}
-                </label>
+                <label className="text-sm font-semibold text-slate-700">{t('bodycomp_standard_weight')}</label>
                 <input className={`input compact-input w-24 ${flagTitleFor('standard_weight_kg') ? 'border-amber-400' : ''}`} type="number" step="0.1" value={fields.standard_weight_kg ?? ''} onChange={(e) => { updateField('standard_weight_kg', e.target.value === '' ? null : Number(e.target.value)); clearFlag('standard_weight_kg'); }} />
               </div>
+              {flagTitleFor('standard_weight_kg') && <p className="flex items-start gap-1 text-xs text-amber-700"><AlertTriangle size={12} className="mt-0.5 shrink-0" />{flagTitleFor('standard_weight_kg')}</p>}
               <div className="grid grid-cols-[1fr_auto] items-center gap-2">
-                <label className="flex items-center gap-1 text-sm font-semibold text-slate-700">
-                  {t('bodycomp_weight_control')}
-                  {flagTitleFor('weight_control_kg') && <AlertTriangle size={12} className="shrink-0 text-amber-600" title={flagTitleFor('weight_control_kg')} />}
-                </label>
+                <label className="text-sm font-semibold text-slate-700">{t('bodycomp_weight_control')}</label>
                 <input className={`input compact-input w-24 ${flagTitleFor('weight_control_kg') ? 'border-amber-400' : ''}`} type="number" step="0.1" value={fields.weight_control_kg ?? ''} onChange={(e) => { updateField('weight_control_kg', e.target.value === '' ? null : Number(e.target.value)); clearFlag('weight_control_kg'); }} />
               </div>
+              {flagTitleFor('weight_control_kg') && <p className="flex items-start gap-1 text-xs text-amber-700"><AlertTriangle size={12} className="mt-0.5 shrink-0" />{flagTitleFor('weight_control_kg')}</p>}
               <div className="grid grid-cols-[1fr_auto] items-center gap-2">
-                <label className="flex items-center gap-1 text-sm font-semibold text-slate-700">
-                  {t('bodycomp_fat_control')}
-                  {flagTitleFor('fat_control_kg') && <AlertTriangle size={12} className="shrink-0 text-amber-600" title={flagTitleFor('fat_control_kg')} />}
-                </label>
+                <label className="text-sm font-semibold text-slate-700">{t('bodycomp_fat_control')}</label>
                 <input className={`input compact-input w-24 ${flagTitleFor('fat_control_kg') ? 'border-amber-400' : ''}`} type="number" step="0.1" value={fields.fat_control_kg ?? ''} onChange={(e) => { updateField('fat_control_kg', e.target.value === '' ? null : Number(e.target.value)); clearFlag('fat_control_kg'); }} />
               </div>
+              {flagTitleFor('fat_control_kg') && <p className="flex items-start gap-1 text-xs text-amber-700"><AlertTriangle size={12} className="mt-0.5 shrink-0" />{flagTitleFor('fat_control_kg')}</p>}
               <div className="grid grid-cols-[1fr_auto] items-center gap-2">
-                <label className="flex items-center gap-1 text-sm font-semibold text-slate-700">
-                  {t('bodycomp_muscle_control')}
-                  {flagTitleFor('muscle_control_text') && <AlertTriangle size={12} className="shrink-0 text-amber-600" title={flagTitleFor('muscle_control_text')} />}
-                </label>
+                <label className="text-sm font-semibold text-slate-700">{t('bodycomp_muscle_control')}</label>
                 <input className={`input compact-input w-32 ${flagTitleFor('muscle_control_text') ? 'border-amber-400' : ''}`} type="text" value={fields.muscle_control_text ?? ''} onChange={(e) => { updateField('muscle_control_text', e.target.value || null); clearFlag('muscle_control_text'); }} />
               </div>
+              {flagTitleFor('muscle_control_text') && <p className="flex items-start gap-1 text-xs text-amber-700"><AlertTriangle size={12} className="mt-0.5 shrink-0" />{flagTitleFor('muscle_control_text')}</p>}
             </div>
             {rawText && (
               <details className="rounded-lg border border-slate-200 p-2" open={showRaw} onToggle={(e) => setShowRaw(e.target.open)}>

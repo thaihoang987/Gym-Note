@@ -80,20 +80,23 @@ async function preprocessForOcr(imagePath, region = null) {
 // covers, and the highlighted cell can only be told apart by background color, not text (see
 // classifyBodyType).
 //
-// These top/bottom fractions are calibrated against a real full-page reference screenshot of this
-// exact report template (profile row -> big weight figure -> body score card -> body composition
-// card -> six stat-pair cards -> body type quadrant chart -> weight suggestions card -> disclaimer
-// text), and include deliberate overlap with their neighbors so a value sitting near a boundary
-// isn't cut in half. If a future screenshot uses a differently-proportioned template (e.g. a
-// different app version or a partial/scrolled capture), these fractions may need retuning — a
-// miscalibrated boundary can make a region crop miss content (same as not having it at all), but
-// per `mergeRegionFields` below it can never inject a wrong value over one the full-page pass
-// already read directly, so the worst case is no improvement, not a regression.
+// These top/bottom fractions started as a best-effort estimate from a reference screenshot, then
+// got corrected once against a real production scan's per-region debug output: the original
+// weightSuggestions top (0.88) cut off the "Standard weight" line entirely — the real report packs
+// the body-type chart into less vertical space than estimated, so weight-suggestions content
+// starts earlier than guessed. Widened to start right where statsGrid ends (0.80) instead of
+// leaving a gap over the chart, trading a bit of wasted OCR on chart pixels (no labels there to
+// misparse) for not silently missing the section again. If a future screenshot uses a
+// differently-proportioned template (e.g. a different app version or a partial/scrolled capture),
+// these fractions may need retuning — a miscalibrated boundary can make a region crop miss content
+// (same as not having it at all), but per `mergeRegionFields` below it can never inject a wrong
+// value over one the full-page pass already read directly, so the worst case is no improvement,
+// not a regression.
 const REGIONS = [
   { name: 'header', top: 0, bottom: 0.28, fields: ['weight_kg', 'weight_grade', 'logged_at', 'body_score', 'bmi', 'bmi_grade', 'body_fat_percent', 'body_fat_grade'] },
   { name: 'composition', top: 0.25, bottom: 0.44, fields: ['body_water_mass_kg', 'fat_mass_kg', 'bone_mineral_mass_kg', 'protein_mass_kg'] },
   { name: 'statsGrid', top: 0.40, bottom: 0.80, fields: ['muscle_mass_kg', 'muscle_mass_grade', 'muscle_percent', 'muscle_percent_grade', 'body_water_percent', 'body_water_percent_grade', 'protein_percent', 'protein_percent_grade', 'bone_mineral_percent', 'bone_mineral_percent_grade', 'skeletal_muscle_kg', 'skeletal_muscle_grade', 'visceral_fat_rating', 'visceral_fat_grade', 'bmr_kcal', 'bmr_grade', 'waist_hip_ratio', 'waist_hip_grade', 'body_age', 'fat_free_weight_kg', 'heart_rate_bpm', 'heart_rate_grade'] },
-  { name: 'weightSuggestions', top: 0.88, bottom: 1, fields: ['standard_weight_kg', 'weight_control_kg', 'fat_control_kg', 'muscle_control_text'] }
+  { name: 'weightSuggestions', top: 0.80, bottom: 1, fields: ['standard_weight_kg', 'weight_control_kg', 'fat_control_kg', 'muscle_control_text'] }
 ];
 
 async function ocrRegion(imagePath, region) {
@@ -106,6 +109,27 @@ async function ocrRegion(imagePath, region) {
     // right next to normal-sized text, and it drops the big number entirely — verified head-to-head
     // against a rendered test report, psm 4 reads it correctly while psm 6 does not.
     return await tesseract.recognize(processedPath, { lang: 'eng', oem: 1, psm: 4 });
+  } finally {
+    fs.unlink(processedPath).catch(() => {});
+  }
+}
+
+// The header's weight figure splits a huge integer ("64") from a genuinely tiny decimal suffix
+// ("...,2") sitting right next to it — verified against a real production scan, no single psm
+// mode reads both: psm 4 (used above) reliably reads the big integer but drops the small decimal
+// entirely, while psm 6 does the opposite, reading the decimal as its own short line ("WP
+// 09/07/2026 23:27" / ",2" / "Standard | Decrease...") but dropping the integer. Rather than
+// picking one and losing the other, this re-runs the same header crop through psm 6 purely to
+// recover that decimal digit and combine it with whatever integer the main psm 4 pass already
+// found — only called as a fallback when the primary result looks like a whole number, since a
+// genuinely correct whole-kg reading is expected to be rare (every value on this report, weight
+// included, is otherwise shown to exactly one decimal place).
+async function recoverWeightDecimalDigit(imagePath, headerRegion) {
+  const processedPath = await preprocessForOcr(imagePath, headerRegion);
+  try {
+    const text = await tesseract.recognize(processedPath, { lang: 'eng', oem: 1, psm: 6 });
+    const match = text.match(/^[.,]\s*(\d)\s*$/m);
+    return match ? match[1] : null;
   } finally {
     fs.unlink(processedPath).catch(() => {});
   }
@@ -185,6 +209,16 @@ function plausible(key, value) {
   return value >= range[0] && value <= range[1];
 }
 
+// These fields are always rendered as a bare integer on the report ("82 points", "26 years old",
+// "1508 kcal"...), never with a decimal — verified across every real sample collected so far. A
+// decimal-valued candidate for one of these is a real (production, not simulated) mangled-delta
+// artifact: the row "0.9 [delta] 26 years old" OCR'd as "0.9 40.1 26 years old", where "40.1" is a
+// down-arrow-turned-"4" glued to its own "0.1" delta with no separating space — not caught by
+// isDeltaNoise's narrower [100,109] pattern, but it slips past body_age's wide [5,100] plausible
+// range and steals the slot the real "26" should fill. Since a genuine reading here is always a
+// whole number, any non-integer candidate is rejected outright before the plausible-range check.
+const INTEGER_ONLY_FIELDS = new Set(['body_score', 'visceral_fat_rating', 'bmr_kcal', 'heart_rate_bpm', 'body_age']);
+
 // Tesseract consistently mangles the small up/down delta figures next to each metric
 // ("↓0.3", "↑0.1"...) into a 3-digit token shaped like "10X" (the arrow + "0" + "." collapse
 // into "1" and "0", leaving the real last digit). No real metric on this report is a bare
@@ -192,6 +226,17 @@ function plausible(key, value) {
 // gets mistaken for an actual field value.
 function isDeltaNoise(value) {
   return value !== null && value >= 100 && value <= 109 && Number.isInteger(value);
+}
+
+// Another real-sample delta mangling, distinct from the "10X" pattern above: an up/down arrow
+// glued directly to its own "0.X" figure collapses into a sign-prefixed leading-zero integer
+// ("↑0.3" -> "+03"). No genuine value on this report is ever written with a leading zero (a real
+// reading is "3", never "03"; a real ratio is "0.9", never written as an integer at all) — so this
+// is a safe, structural (not range-based) tell that a token is noise regardless of what value it
+// happens to parse to. This is what let a stray "+03" (parsing to the plausible-for-body_fat
+// value 3) steal body_fat_percent's slot ahead of the real "17.9" in production.
+function isLeadingZeroNoise(raw) {
+  return /^[+-]?0[0-9]/.test(raw);
 }
 
 // Tesseract sometimes drops the decimal point on a 2-4 digit integer ("49.9" -> "499", "4.4" ->
@@ -254,6 +299,7 @@ function numberTokens(fullText, from, to) {
 // range — e.g. the noise value 10 is a perfectly plausible protein_percent on its own. So a glued
 // token passing the raw check is treated as suspect noise, not a free pass.
 function resolveValue(key, rawValue, glued = false) {
+  if (INTEGER_ONLY_FIELDS.has(key) && rawValue !== null && !Number.isInteger(rawValue)) return null;
   if (plausible(key, rawValue)) return glued ? null : rawValue;
   const recovered = recoverLostDecimal(rawValue);
   if (plausible(key, recovered)) return recovered;
@@ -289,7 +335,7 @@ class ReportParser {
   single(key, label, { window = 60, hasGrade = true } = {}) {
     const found = findLabel(this.text, label, this.pos);
     if (!found) return { value: null, grade: null };
-    const tokens = numberTokens(this.text, this.pos, found.index).filter((t) => !this.claimed.has(t.index) && !isDeltaNoise(t.value));
+    const tokens = numberTokens(this.text, this.pos, found.index).filter((t) => !this.claimed.has(t.index) && !isDeltaNoise(t.value) && !isLeadingZeroNoise(t.raw));
     let value = null;
     for (let i = tokens.length - 1; i >= 0; i -= 1) {
       const resolved = resolveValue(key, tokens[i].value, tokens[i].glued);
@@ -325,7 +371,7 @@ class ReportParser {
     const rowStart = Math.min(...found.map((f) => f.index));
     const rowLabelEnd = Math.max(...found.map((f) => f.end));
 
-    const tokens = numberTokens(this.text, searchFrom, rowStart).filter((t) => !this.claimed.has(t.index) && !isDeltaNoise(t.value));
+    const tokens = numberTokens(this.text, searchFrom, rowStart).filter((t) => !this.claimed.has(t.index) && !isDeltaNoise(t.value) && !isLeadingZeroNoise(t.raw));
 
     const values = [];
     let cursor = 0;
@@ -567,6 +613,26 @@ export async function ocrBodyCompositionImage(imagePath) {
     }
   }));
   const fields = mergeRegionFields(baseline, regionResults);
+
+  // A whole-number weight (no fractional part) is almost certainly a dropped decimal, not a
+  // genuinely round kg reading (see recoverWeightDecimalDigit) — try the psm 6 fallback pass to
+  // recover it. This combines two direct OCR reads of the same crop rather than guessing from
+  // other fields, so on success it's trusted outright (cleared from uncertain_fields too).
+  if (Number.isInteger(fields.weight_kg)) {
+    try {
+      const headerRegion = REGIONS.find((r) => r.name === 'header');
+      const digit = await recoverWeightDecimalDigit(imagePath, headerRegion);
+      if (digit !== null) {
+        const combined = Number(`${fields.weight_kg}.${digit}`);
+        if (plausible('weight_kg', combined)) {
+          fields.weight_kg = combined;
+          fields.uncertain_fields = (fields.uncertain_fields || []).filter((k) => k !== 'weight_kg');
+        }
+      }
+    } catch {
+      // Best-effort recovery pass — leave weight_kg as the whole-number reading if it fails.
+    }
+  }
 
   // Exposed alongside rawText purely for debugging a miscalibrated REGIONS boundary (see comment
   // above it) — if a region's crop lands on the wrong part of the report, its raw text makes that
