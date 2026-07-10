@@ -3309,11 +3309,21 @@ function BodyCompMetricCard({ label, value, unit, grade, gradeOptions, onChangeV
 
 const BODYCOMP_GRADE_OPTIONS = ['Under', 'Standard', 'Normal', 'Good', 'Fit', 'Over', 'High', 'Very high', 'Dangerous'];
 
+// <input type="datetime-local"> needs "YYYY-MM-DDTHH:mm" in LOCAL time — toISOString() would
+// shift by the timezone offset, showing the wrong hour back to the user.
+function toDatetimeLocalValue(isoOrNull) {
+  const date = isoOrNull ? new Date(isoOrNull) : new Date();
+  if (Number.isNaN(date.getTime())) return toDatetimeLocalValue(null);
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
 function BodyCompositionScanModal({ userId, onClose, onSaved }) {
   const t = useLang();
   const [step, setStep] = useState('pick');
   const [photoPath, setPhotoPath] = useState(null);
   const [fields, setFields] = useState({});
+  const [loggedAt, setLoggedAt] = useState(() => toDatetimeLocalValue(null));
   const [rawText, setRawText] = useState('');
   const [showRaw, setShowRaw] = useState(false);
   const [error, setError] = useState('');
@@ -3328,6 +3338,7 @@ function BodyCompositionScanModal({ userId, onClose, onSaved }) {
       const result = await api('/api/body-composition/scan', { method: 'POST', body: JSON.stringify({ photo: dataUrl }) });
       setPhotoPath(result.photoPath);
       setFields(result.fields);
+      setLoggedAt(toDatetimeLocalValue(result.fields?.logged_at));
       setRawText(result.rawText || '');
       setStep('confirm');
     } catch (err) {
@@ -3339,7 +3350,8 @@ function BodyCompositionScanModal({ userId, onClose, onSaved }) {
   const updateField = (key, value) => setFields((current) => ({ ...current, [key]: value }));
 
   const save = async () => {
-    await api('/api/body-composition', { method: 'POST', body: JSON.stringify({ userId, photoPath, ...fields }) });
+    const { logged_at, ...savedFields } = fields;
+    await api('/api/body-composition', { method: 'POST', body: JSON.stringify({ userId, photoPath, loggedAt: new Date(loggedAt).toISOString(), ...savedFields }) });
     onSaved?.();
     onClose();
   };
@@ -3365,6 +3377,10 @@ function BodyCompositionScanModal({ userId, onClose, onSaved }) {
         {step === 'confirm' && (
           <div className="space-y-3 p-4 overflow-y-auto" style={{ maxHeight: '75vh' }}>
             <p className="text-xs text-slate-500">{t('bodycomp_scan_confirm_hint')}</p>
+            <div className="grid grid-cols-[1fr_auto] items-center gap-2">
+              <label className="text-sm font-semibold text-slate-700">{t('bodycomp_scan_datetime')}</label>
+              <input className="input compact-input" type="datetime-local" value={loggedAt} onChange={(e) => setLoggedAt(e.target.value)} />
+            </div>
             <div className="grid grid-cols-2 gap-2">
               <BodyCompMetricCard
                 label={t('bodycomp_body_score')}
