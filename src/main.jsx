@@ -44,6 +44,10 @@ import {
 } from 'lucide-react';
 import { WheelPicker as ReactWheelPicker, WheelPickerWrapper } from '@ncdai/react-wheel-picker';
 import { Area, AreaChart, Brush, CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
+import * as echarts from 'echarts/core';
+import { LineChart as EChartsLineChart } from 'echarts/charts';
+import { DataZoomComponent, GridComponent, TooltipComponent } from 'echarts/components';
+import { CanvasRenderer } from 'echarts/renderers';
 import '@ncdai/react-wheel-picker/style.css';
 import './styles.css';
 import { createT } from './i18n.js';
@@ -59,6 +63,10 @@ import {
   TEMPLATE_DEFS as LOG_TEMPLATE_DEFS
 } from '../shared/logTemplates.js';
 import { BODY_COMPOSITION_METRIC_DEFS, BODY_TYPE_ZONES, gradeColorTier, GRADE_TIER_COLORS } from '../shared/bodyCompositionMetrics.js';
+
+// Registers only the chart type/components actually used (line chart + zoom slider) instead of
+// pulling in all of echarts, which keeps this out of the "chunks larger than 500kB" bundle warning.
+echarts.use([EChartsLineChart, GridComponent, TooltipComponent, DataZoomComponent, CanvasRenderer]);
 
 function getMuscleNames(settings) {
   const locale = settings?.locale || '';
@@ -8009,6 +8017,36 @@ function BodyCompositionDetailPopup({ metricDef, latestRow, delta, boundaries, t
   );
 }
 
+// Thin ECharts wrapper: owns the chart instance's lifecycle (init once, dispose on unmount) and
+// re-applies `option` whenever it changes, so callers just pass a plain ECharts option object
+// like any other declarative chart prop instead of touching the imperative echarts API directly.
+function EChart({ option, height = 240 }) {
+  const containerRef = React.useRef(null);
+  const chartRef = React.useRef(null);
+
+  useEffect(() => {
+    const chart = echarts.init(containerRef.current);
+    chartRef.current = chart;
+    // A window 'resize' listener alone misses this: the container's own width can change from
+    // CSS layout settling (e.g. this chart mounting inside a tab that just became visible) with
+    // no window resize event at all, leaving the axis tick spacing computed against a stale
+    // (often too-narrow) initial width — ResizeObserver catches that directly on the element.
+    const observer = new ResizeObserver(() => chart.resize());
+    observer.observe(containerRef.current);
+    return () => {
+      observer.disconnect();
+      chart.dispose();
+      chartRef.current = null;
+    };
+  }, []);
+
+  useEffect(() => {
+    chartRef.current?.setOption(option, true);
+  }, [option]);
+
+  return <div ref={containerRef} style={{ width: '100%', height }} />;
+}
+
 function BodyCompositionSection({ userId, settings }) {
   const t = useLang();
   const rangeOptions = getRangeOptions(t);
@@ -8037,6 +8075,46 @@ function BodyCompositionSection({ userId, settings }) {
   const chartDomain = chartRangeDomain(rangeKey);
   const latestRow = rows[rows.length - 1] || null;
   const delta = rows.length ? bodyCompositionDelta(rows, rows.length - 1) : null;
+
+  const tickDateFormat = (value) => formatDate(value, settings, { day: '2-digit', month: '2-digit' });
+  const chartOption = useMemo(() => ({
+    grid: { top: 24, right: 18, bottom: 48, left: 44 },
+    xAxis: {
+      type: 'time',
+      min: chartDomain[0] === 'auto' ? undefined : chartDomain[0],
+      max: chartDomain[1] === 'auto' ? undefined : chartDomain[1],
+      axisLine: { lineStyle: { color: '#6b668a' } },
+      axisLabel: { color: '#6b668a', formatter: tickDateFormat, hideOverlap: true }
+    },
+    yAxis: {
+      type: 'value',
+      min: (v) => Math.floor(v.min - 1),
+      max: (v) => Math.ceil(v.max + 1),
+      axisLine: { show: false },
+      axisLabel: { color: '#6b668a' },
+      splitLine: { lineStyle: { color: '#e2e8f0', type: 'dashed' } }
+    },
+    tooltip: {
+      trigger: 'axis',
+      formatter: (params) => {
+        const point = params[0];
+        return `${tickDateFormat(point.value[0])}<br/>${t(metricDef.labelKey)}: <strong>${point.value[1]} ${metricDef.unit}</strong>`;
+      }
+    },
+    dataZoom: [
+      { type: 'inside', xAxisIndex: 0 },
+      { type: 'slider', xAxisIndex: 0, height: 22, bottom: 4, borderColor: '#e2e8f0', fillerColor: 'rgba(37, 99, 235, 0.12)', handleStyle: { color: '#2563eb' }, labelFormatter: tickDateFormat }
+    ],
+    series: [{
+      type: 'line',
+      name: t(metricDef.labelKey),
+      data: rangedRows.map((row) => [row.ts, row.value]),
+      color: '#2563eb',
+      lineStyle: { width: 3 },
+      symbolSize: 6,
+      smooth: true
+    }]
+  }), [rangedRows, chartDomain, metricDef, settings]);
 
   if (!logs.length) return null;
 
@@ -8072,24 +8150,7 @@ function BodyCompositionSection({ userId, settings }) {
         </button>
       )}
       {rangedRows.length ? (
-        <ResponsiveContainer width="100%" height={240}>
-          <LineChart data={rangedRows} margin={{ top: 16, right: 18, bottom: 8, left: 8 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-            <XAxis
-              dataKey="ts"
-              type="number"
-              domain={chartDomain}
-              stroke="#6b668a"
-              tickFormatter={(value) => formatDate(value, settings, { day: '2-digit', month: '2-digit' })}
-              tickMargin={14}
-              minTickGap={22}
-            />
-            <YAxis stroke="#6b668a" tickMargin={10} domain={['dataMin - 1', 'dataMax + 1']} />
-            <Tooltip labelFormatter={(value) => formatDate(value, settings, { day: '2-digit', month: '2-digit' })} />
-            <Line type="monotone" dataKey="value" name={t(metricDef.labelKey)} stroke="#2563eb" strokeWidth={3} dot />
-            <Brush dataKey="ts" height={22} stroke="#2563eb" travellerWidth={10} tickFormatter={(value) => formatDate(value, settings, { day: '2-digit', month: '2-digit' })} />
-          </LineChart>
-        </ResponsiveContainer>
+        <EChart option={chartOption} height={240} />
       ) : <p className="text-slate-600">{t('bodycomp_no_data')}</p>}
       {detailOpen && latestRow && (
         <BodyCompositionDetailPopup
