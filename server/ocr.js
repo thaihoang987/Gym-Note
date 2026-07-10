@@ -116,18 +116,43 @@ function findGradeWords(text, count) {
   return found;
 }
 
-// Pulls every number-like token out of a text span, in left-to-right order, tagged with its
-// absolute offset in the full OCR'd text (used to stop a later field from re-claiming a token
+// Every real value on the report is separated from surrounding text by whitespace or punctuation
+// ("49.9 kg", "95 bpm", "17.9%") — verified across every real OCR sample collected so far, never
+// a letter touching the digits directly. The mangled delta-arrow glyphs ("↓0.3", "↑0.1") are the
+// opposite: Tesseract runs them straight into an adjacent letter with no space ("V0.3", "10s",
+// "T01"), because the arrow character itself gets misread as that letter. So a number with a
+// letter glued to either side — regardless of what value it parses to — is delta noise, not a
+// real field value.
+function isGluedToLetter(fullText, index, length) {
+  const before = fullText[index - 1];
+  const after = fullText[index + length];
+  return /[a-zA-Z]/.test(before || '') || /[a-zA-Z]/.test(after || '');
+}
+
+// Pulls every number-like token out of `fullText[from:to]`, in left-to-right order, tagged with
+// its absolute offset in the full OCR'd text (used to stop a later field from re-claiming a token
 // an earlier field already consumed).
-function numberTokens(text, offset = 0) {
-  const matches = [...text.matchAll(/([+-]?[0-9]+[.,][0-9]+|[+-]?[0-9]+)/g)];
-  return matches.map((m) => ({ raw: m[1], index: offset + m.index, value: parseLocaleNumber(m[1]) }));
+function numberTokens(fullText, from, to) {
+  const matches = [...fullText.slice(from, to).matchAll(/([+-]?[0-9]+[.,][0-9]+|[+-]?[0-9]+)/g)];
+  return matches.map((m) => {
+    const index = from + m.index;
+    return { raw: m[1], index, value: parseLocaleNumber(m[1]), glued: isGluedToLetter(fullText, index, m[1].length) };
+  });
 }
 
 // Resolves one field's value against its plausible range, trying a lost-decimal recovery before
 // giving up. Returns null (never a guess outside the physically sane range) on failure.
-function resolveValue(key, rawValue) {
-  if (plausible(key, rawValue)) return rawValue;
+//
+// A token glued to a letter (see isGluedToLetter) is trusted only through the lost-decimal path,
+// never taken at face value. Reasoning from real samples: the one case where a genuine value gets
+// glued to a letter is a *lost decimal point AND lost unit space together* ("49.9 kg" -> "499g"),
+// which always fails the raw plausible check and only passes after recovery. Every glued token
+// that passes the raw check as-is, in every real sample collected so far, has turned out to be a
+// mangled delta arrow ("↓0.3" -> "10s") that happens to also land in some *other* metric's valid
+// range — e.g. the noise value 10 is a perfectly plausible protein_percent on its own. So a glued
+// token passing the raw check is treated as suspect noise, not a free pass.
+function resolveValue(key, rawValue, glued = false) {
+  if (plausible(key, rawValue)) return glued ? null : rawValue;
   const recovered = recoverLostDecimal(rawValue);
   if (plausible(key, recovered)) return recovered;
   return null;
@@ -162,11 +187,10 @@ class ReportParser {
   single(key, label, { window = 60, hasGrade = true } = {}) {
     const found = findLabel(this.text, label, this.pos);
     if (!found) return { value: null, grade: null };
-    const before = this.text.slice(this.pos, found.index);
-    const tokens = numberTokens(before, this.pos).filter((t) => !this.claimed.has(t.index) && !isDeltaNoise(t.value));
+    const tokens = numberTokens(this.text, this.pos, found.index).filter((t) => !this.claimed.has(t.index) && !isDeltaNoise(t.value));
     let value = null;
     for (let i = tokens.length - 1; i >= 0; i -= 1) {
-      const resolved = resolveValue(key, tokens[i].value);
+      const resolved = resolveValue(key, tokens[i].value, tokens[i].glued);
       if (resolved !== null) { value = resolved; this.claimed.add(tokens[i].index); break; }
     }
     this.pos = found.end;
@@ -188,15 +212,14 @@ class ReportParser {
     const rowStart = Math.min(...found.map((f) => f.index));
     const rowLabelEnd = Math.max(...found.map((f) => f.end));
 
-    const before = this.text.slice(searchFrom, rowStart);
-    const tokens = numberTokens(before, searchFrom).filter((t) => !this.claimed.has(t.index) && !isDeltaNoise(t.value));
+    const tokens = numberTokens(this.text, searchFrom, rowStart).filter((t) => !this.claimed.has(t.index) && !isDeltaNoise(t.value));
 
     const values = [];
     let cursor = 0;
     for (const def of defs) {
       let value = null;
       for (let i = cursor; i < tokens.length; i += 1) {
-        const resolved = resolveValue(def.key, tokens[i].value);
+        const resolved = resolveValue(def.key, tokens[i].value, tokens[i].glued);
         if (resolved !== null) { value = resolved; this.claimed.add(tokens[i].index); cursor = i + 1; break; }
       }
       values.push(value);
@@ -247,9 +270,10 @@ export function parseBodyCompositionText(text) {
 
   // Weight is the large standalone number at the very top of the report, before "Body score".
   const bodyScoreIdx = text.search(/Body score/i);
-  const headerSlice = bodyScoreIdx === -1 ? text.slice(0, 120) : text.slice(0, bodyScoreIdx);
-  const weightTokens = numberTokens(headerSlice).filter((t) => resolveValue('weight_kg', t.value) !== null);
-  result.weight_kg = weightTokens.length ? resolveValue('weight_kg', weightTokens[weightTokens.length - 1].value) : null;
+  const headerEnd = bodyScoreIdx === -1 ? 120 : bodyScoreIdx;
+  const headerSlice = text.slice(0, headerEnd);
+  const weightTokens = numberTokens(text, 0, headerEnd).filter((t) => resolveValue('weight_kg', t.value, t.glued) !== null);
+  result.weight_kg = weightTokens.length ? resolveValue('weight_kg', weightTokens[weightTokens.length - 1].value, weightTokens[weightTokens.length - 1].glued) : null;
   const weightGradeMatch = headerSlice.match(/\b(Standard|Under|Over|High)\b/i);
   result.weight_grade = weightGradeMatch ? weightGradeMatch[1] : null;
   parser.advanceTo('Body score');
