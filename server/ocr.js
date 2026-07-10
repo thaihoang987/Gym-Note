@@ -347,6 +347,19 @@ export function parseBodyCompositionText(text) {
   result.fat_control_kg = numberAfterLabel(text, 'Fat control', { signed: true });
   result.muscle_control_text = /keep weight/i.test(text) ? 'keep weight' : null;
 
+  // "Standard weight" is a single OCR'd token with no delta/grade neighbor to sanity-check it
+  // against, so a single-digit misread (a real one seen in production: "61,6" -> "67,6") sails
+  // straight through the plausible-range check with no way to tell. But the report's own numbers
+  // define an identity: standard weight = current weight + weight control (the control figure IS
+  // the adjustment needed to reach standard). When both of those are available, use this identity
+  // to override an OCR'd standard weight that disagrees by more than simple rounding noise.
+  if (result.weight_kg !== null && result.weight_control_kg !== null) {
+    const derived = Number((result.weight_kg + result.weight_control_kg).toFixed(1));
+    if (plausible('standard_weight_kg', derived) && (result.standard_weight_kg === null || Math.abs(result.standard_weight_kg - derived) > 1.5)) {
+      result.standard_weight_kg = derived;
+    }
+  }
+
   return result;
 }
 
