@@ -148,7 +148,7 @@ async function recoverWeightDecimalDigit(imagePath, headerRegion) {
 //    `uncertain_fields` so the confirm form can flag it for the user to check against the photo.
 export function mergeRegionFields(baseline, regionResults) {
   const derived = new Set(baseline.derived_fields || []);
-  const uncertain = new Set();
+  const uncertain = new Set(baseline.uncertain_fields || []);
   for (const { region, fields } of regionResults) {
     if (!fields) continue;
     const regionDerived = new Set(fields.derived_fields || []);
@@ -221,11 +221,16 @@ const INTEGER_ONLY_FIELDS = new Set(['body_score', 'visceral_fat_rating', 'bmr_k
 
 // Tesseract consistently mangles the small up/down delta figures next to each metric
 // ("↓0.3", "↑0.1"...) into a 3-digit token shaped like "10X" (the arrow + "0" + "." collapse
-// into "1" and "0", leaving the real last digit). No real metric on this report is a bare
-// number in [100,109], so this is a safe, sample-verified way to drop delta noise before it
-// gets mistaken for an actual field value.
-function isDeltaNoise(value) {
-  return value !== null && value >= 100 && value <= 109 && Number.isInteger(value);
+// into "1" and "0", leaving the real last digit). This pattern shows up both glued to a
+// neighboring letter and with clean spacing (both seen in production), so gluedness alone can't
+// distinguish it from a real reading — but the field being matched can: heart rate is the one
+// metric on this report where a bare [100,109] integer is a completely ordinary value (a normal
+// pulse), and no other field's real readings ever land in that range. So a token there is only
+// trusted when heart_rate_bpm is among the fields actually being matched at this position;
+// filtered out as noise for everything else (a real case: "102" — a mangled BMI delta — was
+// wrongly kept and stole body_fat_percent's slot once this stopped requiring gluedness).
+function isDeltaNoise(value, candidateKeys) {
+  return value !== null && value >= 100 && value <= 109 && Number.isInteger(value) && !candidateKeys.includes('heart_rate_bpm');
 }
 
 // Another real-sample delta mangling, distinct from the "10X" pattern above: an up/down arrow
@@ -335,7 +340,7 @@ class ReportParser {
   single(key, label, { window = 60, hasGrade = true } = {}) {
     const found = findLabel(this.text, label, this.pos);
     if (!found) return { value: null, grade: null };
-    const tokens = numberTokens(this.text, this.pos, found.index).filter((t) => !this.claimed.has(t.index) && !isDeltaNoise(t.value) && !isLeadingZeroNoise(t.raw));
+    const tokens = numberTokens(this.text, this.pos, found.index).filter((t) => !this.claimed.has(t.index) && !isDeltaNoise(t.value, [key]) && !isLeadingZeroNoise(t.raw));
     let value = null;
     for (let i = tokens.length - 1; i >= 0; i -= 1) {
       const resolved = resolveValue(key, tokens[i].value, tokens[i].glued);
@@ -371,7 +376,8 @@ class ReportParser {
     const rowStart = Math.min(...found.map((f) => f.index));
     const rowLabelEnd = Math.max(...found.map((f) => f.end));
 
-    const tokens = numberTokens(this.text, searchFrom, rowStart).filter((t) => !this.claimed.has(t.index) && !isDeltaNoise(t.value) && !isLeadingZeroNoise(t.raw));
+    const candidateKeys = defs.map((d) => d.key);
+    const tokens = numberTokens(this.text, searchFrom, rowStart).filter((t) => !this.claimed.has(t.index) && !isDeltaNoise(t.value, candidateKeys) && !isLeadingZeroNoise(t.raw));
 
     const values = [];
     let cursor = 0;
@@ -442,6 +448,11 @@ export function parseBodyCompositionText(text) {
   // directly off the report with confidence — surfaced to the client so the confirm form can
   // flag them for extra scrutiny instead of looking identical to a clean OCR read.
   const derivedFields = new Set();
+  // Fields that were read directly (not guessed) but contradict another same-page identity check
+  // by more than rounding noise, with no way to tell which of the two independently-read values is
+  // actually wrong — see the weight/standard-weight cross-check below for why this can't just favor
+  // one side.
+  const uncertainFields = new Set();
 
   result.logged_at = extractLoggedAt(text);
 
@@ -560,13 +571,23 @@ export function parseBodyCompositionText(text) {
   // against, so a single-digit misread (a real one seen in production: "61,6" -> "67,6") sails
   // straight through the plausible-range check with no way to tell. But the report's own numbers
   // define an identity: standard weight = current weight + weight control (the control figure IS
-  // the adjustment needed to reach standard). When both of those are available, use this identity
-  // to override an OCR'd standard weight that disagrees by more than simple rounding noise.
+  // the adjustment needed to reach standard). When standard weight wasn't read at all, fill it in
+  // from this identity — nothing to lose there. But when it WAS read directly and disagrees with
+  // the identity by more than rounding noise, don't assume weight_kg is the trustworthy one and
+  // silently overwrite standard weight with it: a real production case did exactly the opposite
+  // (a misread digit in the big weight figure, "63" read as "65", corrupted a standard weight that
+  // had been read correctly), so favoring either side by default is wrong roughly as often as it's
+  // right. Flag both instead and let the confirm form's manual check settle it.
   if (result.weight_kg !== null && result.weight_control_kg !== null) {
     const derived = Number((result.weight_kg + result.weight_control_kg).toFixed(1));
-    if (plausible('standard_weight_kg', derived) && (result.standard_weight_kg === null || Math.abs(result.standard_weight_kg - derived) > 1.5)) {
-      result.standard_weight_kg = derived;
-      derivedFields.add('standard_weight_kg');
+    if (plausible('standard_weight_kg', derived)) {
+      if (result.standard_weight_kg === null) {
+        result.standard_weight_kg = derived;
+        derivedFields.add('standard_weight_kg');
+      } else if (Math.abs(result.standard_weight_kg - derived) > 1.5) {
+        uncertainFields.add('weight_kg');
+        uncertainFields.add('standard_weight_kg');
+      }
     }
   }
 
@@ -587,6 +608,7 @@ export function parseBodyCompositionText(text) {
   if (result.body_type_zone !== null) derivedFields.add('body_type_zone');
 
   result.derived_fields = [...derivedFields];
+  result.uncertain_fields = [...uncertainFields];
   return result;
 }
 
