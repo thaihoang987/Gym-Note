@@ -3403,9 +3403,16 @@ function toDatetimeLocalValue(isoOrNull) {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 
+// Up to 3 reports at once (e.g. catching up on several weigh-ins scanned back to back) instead of
+// re-opening this modal per photo. Each image still gets its own OCR pass and its own confirm
+// step, one at a time — batching only skips re-opening the file picker between them, it doesn't
+// skip the "check before saving" step for any single image, since that review is exactly what
+// catches OCR misreads (see server/ocr.js).
 function BodyCompositionScanModal({ userId, onClose, onSaved }) {
   const t = useLang();
   const [step, setStep] = useState('pick');
+  const [files, setFiles] = useState([]);
+  const [fileIndex, setFileIndex] = useState(0);
   const [photoPath, setPhotoPath] = useState(null);
   const [fields, setFields] = useState({});
   const [loggedAt, setLoggedAt] = useState(() => toDatetimeLocalValue(null));
@@ -3414,9 +3421,7 @@ function BodyCompositionScanModal({ userId, onClose, onSaved }) {
   const [showRaw, setShowRaw] = useState(false);
   const [error, setError] = useState('');
 
-  const pickFile = async (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  const processFile = async (file) => {
     setStep('loading');
     setError('');
     try {
@@ -3437,6 +3442,14 @@ function BodyCompositionScanModal({ userId, onClose, onSaved }) {
     }
   };
 
+  const pickFiles = async (e) => {
+    const picked = [...(e.target.files || [])].slice(0, 3);
+    if (!picked.length) return;
+    setFiles(picked);
+    setFileIndex(0);
+    await processFile(picked[0]);
+  };
+
   const updateField = (key, value) => setFields((current) => ({ ...current, [key]: value }));
 
   // A field the user edits by hand is no longer an unverified OCR guess — drop it from the
@@ -3453,12 +3466,31 @@ function BodyCompositionScanModal({ userId, onClose, onSaved }) {
     return null;
   };
 
+  const isLastImage = fileIndex >= files.length - 1;
+
+  // Moves on to the next queued image (if any) after the current one is saved or explicitly
+  // skipped, or finishes the whole batch once the last image is done.
+  const advance = async () => {
+    if (isLastImage) {
+      onSaved?.();
+      onClose();
+      return;
+    }
+    const nextIndex = fileIndex + 1;
+    setFileIndex(nextIndex);
+    await processFile(files[nextIndex]);
+  };
+
   const save = async () => {
     const { logged_at, derived_fields, uncertain_fields, ...savedFields } = fields;
     await api('/api/body-composition', { method: 'POST', body: JSON.stringify({ userId, photoPath, loggedAt: new Date(loggedAt).toISOString(), ...savedFields }) });
-    onSaved?.();
-    onClose();
+    await advance();
   };
+
+  // Discards the current image without saving it (e.g. a blurry shot) and moves on — only shown
+  // once there's more than one image in the batch; for a single image, "Retake photo" already
+  // covers this by going back to the picker instead.
+  const skip = () => advance();
 
   return (
     <div className="fixed inset-0 z-[10000] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onClick={onClose}>
@@ -3470,16 +3502,22 @@ function BodyCompositionScanModal({ userId, onClose, onSaved }) {
         {step === 'pick' && (
           <div className="space-y-3 p-4">
             <p className="text-sm text-slate-600">{t('bodycomp_scan_hint')}</p>
+            <p className="text-xs text-slate-500">{t('bodycomp_scan_multi_hint')}</p>
             {error && <p className="text-sm text-red-600">{error}</p>}
             <label className="primary flex items-center justify-center gap-2 cursor-pointer">
               <Camera size={16} /> {t('bodycomp_scan_pick')}
-              <input type="file" accept="image/*" className="hidden" onChange={pickFile} />
+              <input type="file" accept="image/*" multiple className="hidden" onChange={pickFiles} />
             </label>
           </div>
         )}
-        {step === 'loading' && <div className="p-8 text-center text-slate-500">{t('bodycomp_scan_processing')}</div>}
+        {step === 'loading' && (
+          <div className="p-8 text-center text-slate-500">
+            {files.length > 1 ? t('bodycomp_scan_processing_n', fileIndex + 1, files.length) : t('bodycomp_scan_processing')}
+          </div>
+        )}
         {step === 'confirm' && (
           <div className="space-y-3 p-4 overflow-y-auto" style={{ maxHeight: '75vh' }}>
+            {files.length > 1 && <p className="text-xs font-bold uppercase text-slate-400">{t('bodycomp_scan_image_n', fileIndex + 1, files.length)}</p>}
             <p className="text-xs text-slate-500">{t('bodycomp_scan_confirm_hint')}</p>
             <div className="grid grid-cols-[1fr_auto] items-center gap-2">
               <label className="text-sm font-semibold text-slate-700">{t('bodycomp_scan_datetime')}</label>
@@ -3557,8 +3595,12 @@ function BodyCompositionScanModal({ userId, onClose, onSaved }) {
               </details>
             )}
             <div className="flex gap-2 pt-2">
-              <button className="ghost-btn flex-1" onClick={() => setStep('pick')}>{t('bodycomp_scan_retry')}</button>
-              <button className="primary flex-1" onClick={save}>{t('bodycomp_scan_save')}</button>
+              <button className="ghost-btn flex-1" onClick={files.length > 1 ? skip : () => setStep('pick')}>
+                {files.length > 1 ? t('bodycomp_scan_skip') : t('bodycomp_scan_retry')}
+              </button>
+              <button className="primary flex-1" onClick={save}>
+                {files.length > 1 && !isLastImage ? t('bodycomp_scan_save_next') : t('bodycomp_scan_save')}
+              </button>
             </div>
           </div>
         )}
