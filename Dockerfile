@@ -26,8 +26,12 @@ ENV PORT=3001
 # libgl1/libglib2.0-0: not used directly, but opencv-python (a paddleocr dependency) dlopens
 # libGL.so.1 at import time and fails immediately without it — a well-known opencv-in-a-slim-image
 # gap, not something paddleocr documents up front.
+# libgomp1: PaddlePaddle's compiled libpaddle.so links against libgomp (GNU OpenMP, used for its
+# CPU-parallel kernels) — bookworm-slim doesn't ship it by default, so without this package the
+# `import paddleocr` below fails immediately with "ImportError: libgomp.so.1: cannot open shared
+# object file", confirmed by an actual CI build failure on this exact image.
 RUN apt-get update && apt-get install -y --no-install-recommends \
-      python3 python3-pip libgl1 libglib2.0-0 \
+      python3 python3-pip libgl1 libglib2.0-0 libgomp1 \
     && rm -rf /var/lib/apt/lists/*
 RUN pip3 install --no-cache-dir --break-system-packages paddlepaddle paddleocr
 
