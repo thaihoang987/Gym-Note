@@ -1,4 +1,12 @@
-FROM node:22-alpine AS deps
+# Must match the final runtime stage's base image (bookworm, glibc) — npm install here resolves
+# native addons (better-sqlite3) to prebuilt binaries for whatever libc this stage runs on, and a
+# node_modules built against musl (Alpine) segfaults/fails to load when copied into a glibc runtime
+# (or vice versa). This stage used to be node:22-alpine, matching an all-Alpine runtime; when the
+# final stage below switched to bookworm-slim for PaddlePaddle's glibc requirement, this one had to
+# switch too — confirmed by an actual production outage (silent crash, zero log output, since
+# require('better-sqlite3') fails before any of the app's own logging runs) caused by exactly this
+# mismatch.
+FROM node:22-bookworm-slim AS deps
 WORKDIR /app
 COPY package*.json ./
 RUN npm install

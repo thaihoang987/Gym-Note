@@ -70,15 +70,21 @@ function spawnWorker() {
   child.stderr.on('data', (chunk) => {
     stderrTail = (stderrTail + chunk.toString()).slice(-2000);
   });
-  child.on('exit', (code) => {
-    const detail = stderrTail.trim().split('\n').slice(-5).join('\n');
-    const message = `PaddleOCR worker exited unexpectedly (code ${code})${detail ? `: ${detail}` : ''}`;
+  const failAllPending = (message) => {
     for (const [, entry] of pending) {
       clearTimeout(entry.timer);
       entry.reject(new Error(message));
     }
     pending.clear();
     if (worker === child) worker = null;
+  };
+  // A ChildProcess's 'error' event (spawn failure — bad binary, permission denied, etc.) crashes
+  // the whole Node process with an uncaught exception if nothing is listening for it, taking down
+  // the entire server over a single scan request rather than just failing that request.
+  child.on('error', (err) => failAllPending(`Failed to run PaddleOCR worker: ${err.message}`));
+  child.on('exit', (code) => {
+    const detail = stderrTail.trim().split('\n').slice(-5).join('\n');
+    failAllPending(`PaddleOCR worker exited unexpectedly (code ${code})${detail ? `: ${detail}` : ''}`);
   });
   return child;
 }
