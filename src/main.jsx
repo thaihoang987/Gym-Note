@@ -3340,6 +3340,7 @@ function BodyWeightInput({ userId, settings }) {
           index={reportIndex}
           onNavigate={setReportIndex}
           onClose={() => setReportIndex(null)}
+          onDeleted={() => { loadHistory(); loadCompLogs(); }}
         />
       )}
     </div>
@@ -8333,8 +8334,9 @@ function BodyTypeGrid({ zone, t }) {
 // `BodyCompositionSection`'s Analytics view, which shows one metric's trend across every scan).
 // `logs` is the full history sorted oldest-first (so `index - 1` is "the previous scan" for delta
 // text); `onNavigate` lets the caller swap which entry is shown without unmounting this page.
-function BodyCompositionReportPage({ userId, settings, logs, index, onNavigate, onClose }) {
+function BodyCompositionReportPage({ userId, settings, logs, index, onNavigate, onClose, onDeleted }) {
   const t = useLang();
+  const dialog = useAppDialog();
   const lang = settings?.locale?.split('-')[0] || 'en';
   const [ranges, setRanges] = useState({});
   const [popupKey, setPopupKey] = useState(null);
@@ -8348,6 +8350,13 @@ function BodyCompositionReportPage({ userId, settings, logs, index, onNavigate, 
   const daysAgo = prevRow ? Math.round((parseServerDate(row.logged_at) - parseServerDate(prevRow.logged_at)) / 86400000) : null;
 
   if (!row) return null;
+
+  const handleDelete = async () => {
+    if (!(await dialog.confirm(t('bodycomp_report_confirm_delete')))) return;
+    await api(`/api/body-composition/${row.id}`, { method: 'DELETE' });
+    onDeleted?.();
+    onClose();
+  };
 
   const weightDelta = prevRow && row.weight_kg != null && prevRow.weight_kg != null ? Number((row.weight_kg - prevRow.weight_kg).toFixed(2)) : null;
   const bodyScore = row.body_score;
@@ -8375,7 +8384,7 @@ function BodyCompositionReportPage({ userId, settings, logs, index, onNavigate, 
         <div className="mb-4 flex items-center justify-between">
           <button className="icon-btn text-white" onClick={onClose}><X /></button>
           <h3 className="font-bold text-slate-200">{t('bodycomp_report_title')}</h3>
-          <div className="w-9" />
+          <button className="icon-btn text-white" title={t('bodycomp_report_delete')} onClick={handleDelete}><Trash2 size={18} /></button>
         </div>
 
         <div className="flex items-center justify-center gap-3">
