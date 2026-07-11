@@ -15,11 +15,21 @@ WORKDIR /app
 RUN git clone --depth 1 https://github.com/hasaneyldrm/exercises-dataset.git hasaneyldrm-exercises-dataset \
     && rm -rf hasaneyldrm-exercises-dataset/.git
 
-FROM node:22-alpine
+# Body-composition scan OCR runs on PaddleOCR (Python), not Tesseract — see server/ocr/paddleWorker.py
+# for why. PaddlePaddle's official CPU wheel is a manylinux (glibc) build with no musl/Alpine
+# support, so the final runtime image can't be Alpine-based like the build stages above; bookworm
+# (Debian 12) is the smallest official Node image with glibc.
+FROM node:22-bookworm-slim
 WORKDIR /app
 ENV NODE_ENV=production
 ENV PORT=3001
-RUN apk add --no-cache tesseract-ocr tesseract-ocr-data-eng
+# libgl1/libglib2.0-0: not used directly, but opencv-python (a paddleocr dependency) dlopens
+# libGL.so.1 at import time and fails immediately without it — a well-known opencv-in-a-slim-image
+# gap, not something paddleocr documents up front.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      python3 python3-pip libgl1 libglib2.0-0 \
+    && rm -rf /var/lib/apt/lists/*
+RUN pip3 install --no-cache-dir --break-system-packages paddlepaddle paddleocr
 
 LABEL net.unraid.docker.icon="https://raw.githubusercontent.com/thaihoang987/Gym-Note/main/public/pwa-512.png"
 LABEL org.opencontainers.image.source="https://github.com/thaihoang987/Gym-Note"
@@ -32,6 +42,11 @@ COPY --from=build /app/dist ./dist
 COPY --from=build /app/server ./server
 COPY --from=build /app/shared ./shared
 COPY --from=dataset /app/hasaneyldrm-exercises-dataset ./hasaneyldrm-exercises-dataset
+
+# Pre-downloads PaddleOCR's detection/recognition model files into this layer at build time (same
+# config as server/ocr/paddleWorker.py) so the container never needs internet access at runtime and
+# the first real scan doesn't silently eat a ~1 minute model-download delay.
+RUN python3 -c "from paddleocr import PaddleOCR; PaddleOCR(use_doc_orientation_classify=False, use_doc_unwarping=False, use_textline_orientation=False, enable_mkldnn=False, text_detection_model_name='PP-OCRv6_small_det', text_recognition_model_name='PP-OCRv6_small_rec')"
 
 RUN mkdir -p /app/data /app/uploads
 VOLUME ["/app/data"]
