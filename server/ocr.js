@@ -86,16 +86,24 @@ async function preprocessForOcr(imagePath, region = null) {
 // the body-type chart into less vertical space than estimated, so weight-suggestions content
 // starts earlier than guessed. Widened to start right where statsGrid ends (0.80) instead of
 // leaving a gap over the chart, trading a bit of wasted OCR on chart pixels (no labels there to
-// misparse) for not silently missing the section again. If a future screenshot uses a
-// differently-proportioned template (e.g. a different app version or a partial/scrolled capture),
-// these fractions may need retuning — a miscalibrated boundary can make a region crop miss content
-// (same as not having it at all), but per `mergeRegionFields` below it can never inject a wrong
-// value over one the full-page pass already read directly, so the worst case is no improvement,
-// not a regression.
+// misparse) for not silently missing the section again.
+//
+// statsGrid's top was similarly corrected from 0.40 to 0.36 after pixel-measuring 6 real exports
+// (all identical 1320x6955 — these are digital app exports with deterministic layout, not camera
+// photos, so a boundary tuned against one image holds exactly for all of them): 0.40 sliced through
+// the middle of the "Muscle mass / Muscle percentage" card, silently dropping both fields from the
+// region pass (only their grade badges survived, e.g. "Standard Standard" as the crop's first line).
+// The card's true top edge sits at ~0.371 of page height; 0.36 gives a small margin above it.
+//
+// If a future screenshot uses a differently-proportioned template (e.g. a different app version or
+// a partial/scrolled capture), these fractions may need retuning — a miscalibrated boundary can make
+// a region crop miss content (same as not having it at all), but per `mergeRegionFields` below it
+// can never inject a wrong value over one the full-page pass already read directly, so the worst
+// case is no improvement, not a regression.
 const REGIONS = [
   { name: 'header', top: 0, bottom: 0.28, fields: ['weight_kg', 'weight_grade', 'logged_at', 'body_score', 'bmi', 'bmi_grade', 'body_fat_percent', 'body_fat_grade'] },
   { name: 'composition', top: 0.25, bottom: 0.44, fields: ['body_water_mass_kg', 'fat_mass_kg', 'bone_mineral_mass_kg', 'protein_mass_kg'] },
-  { name: 'statsGrid', top: 0.40, bottom: 0.80, fields: ['muscle_mass_kg', 'muscle_mass_grade', 'muscle_percent', 'muscle_percent_grade', 'body_water_percent', 'body_water_percent_grade', 'protein_percent', 'protein_percent_grade', 'bone_mineral_percent', 'bone_mineral_percent_grade', 'skeletal_muscle_kg', 'skeletal_muscle_grade', 'visceral_fat_rating', 'visceral_fat_grade', 'bmr_kcal', 'bmr_grade', 'waist_hip_ratio', 'waist_hip_grade', 'body_age', 'fat_free_weight_kg', 'heart_rate_bpm', 'heart_rate_grade'] },
+  { name: 'statsGrid', top: 0.36, bottom: 0.80, fields: ['muscle_mass_kg', 'muscle_mass_grade', 'muscle_percent', 'muscle_percent_grade', 'body_water_percent', 'body_water_percent_grade', 'protein_percent', 'protein_percent_grade', 'bone_mineral_percent', 'bone_mineral_percent_grade', 'skeletal_muscle_kg', 'skeletal_muscle_grade', 'visceral_fat_rating', 'visceral_fat_grade', 'bmr_kcal', 'bmr_grade', 'waist_hip_ratio', 'waist_hip_grade', 'body_age', 'fat_free_weight_kg', 'heart_rate_bpm', 'heart_rate_grade'] },
   { name: 'weightSuggestions', top: 0.80, bottom: 1, fields: ['standard_weight_kg', 'weight_control_kg', 'fat_control_kg', 'muscle_control_text'] }
 ];
 
