@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1
 # Must match the final runtime stage's base image (bookworm, glibc) — npm install here resolves
 # native addons (better-sqlite3) to prebuilt binaries for whatever libc this stage runs on, and a
 # node_modules built against musl (Alpine) segfaults/fails to load when copied into a glibc runtime
@@ -38,10 +39,21 @@ ENV PORT=3001
 # CPU-parallel kernels) — bookworm-slim doesn't ship it by default, so without this package the
 # `import paddleocr` below fails immediately with "ImportError: libgomp.so.1: cannot open shared
 # object file", confirmed by an actual CI build failure on this exact image.
-RUN apt-get update && apt-get install -y --no-install-recommends \
-      python3 python3-pip libgl1 libglib2.0-0 libgomp1 \
-    && rm -rf /var/lib/apt/lists/*
-RUN pip3 install --no-cache-dir --break-system-packages paddlepaddle paddleocr
+# Cache-mounted (not a --no-cache-dir install): apt's package cache and pip's wheel cache persist
+# in BuildKit's cache store (exported/imported via the workflow's `cache-to/from: type=gha`)
+# independently of the image layer graph. A plain layer-cached RUN only helps when this exact
+# instruction and everything before it is byte-for-byte unchanged from a previous build — any
+# earlier line changing (as happened twice in a row fixing unrelated things) busts it and forces a
+# full re-download of paddlepaddle/paddleocr (several hundred MB) from PyPI. The cache mounts let a
+# layer-cache miss still reuse already-downloaded packages instead of re-fetching them.
+# Versions pinned to what was verified locally (paddlepaddle 3.3.1, paddleocr 3.7.0) rather than
+# left floating, so a new upstream release can't silently change build/runtime behavior again.
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
+    apt-get update && apt-get install -y --no-install-recommends \
+      python3 python3-pip libgl1 libglib2.0-0 libgomp1
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip3 install --break-system-packages paddlepaddle==3.3.1 paddleocr==3.7.0
 
 LABEL net.unraid.docker.icon="https://raw.githubusercontent.com/thaihoang987/Gym-Note/main/public/pwa-512.png"
 LABEL org.opencontainers.image.source="https://github.com/thaihoang987/Gym-Note"
