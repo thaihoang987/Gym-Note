@@ -125,6 +125,14 @@ export const METRIC_ANALYSIS = {
       under: 'Your heart rate is below the typical resting range, which is common for well-trained athletes but worth mentioning to a doctor if you feel symptoms.',
       good: 'The heart rate is normal. Heart rate changes are closely related to heart health. In order to enhance heart health, please keep healthy eating and exercise habits.',
       warning: 'Your heart rate is above the typical resting range. If this persists at rest, consider checking in with a doctor.'
+    },
+    // Unlike every other metric here, body age has no grade badge on the report at all — its tier
+    // is computed by the report page from comparing this value against the user's actual age
+    // (from their profile birth date), not read off a report field, so only these two tiers are
+    // ever reached (see BodyCompositionDetailPopup).
+    body_age: {
+      good: 'The physical age is smaller than the actual age, indicating that the physical condition is very good. Please continue to maintain a healthy lifestyle.',
+      warning: 'The physical age is greater than the actual age. It is recommended to pay more attention to your body composition, especially reducing body fat percentage, to help lower your physical age.'
     }
   },
   vi: {
@@ -194,6 +202,10 @@ export const METRIC_ANALYSIS = {
       under: 'Nhịp tim của bạn thấp hơn mức nghỉ thông thường, thường gặp ở người tập luyện lâu năm, nhưng nên trao đổi với bác sĩ nếu có triệu chứng bất thường.',
       good: 'Nhịp tim của bạn ở mức bình thường. Thay đổi nhịp tim liên quan chặt chẽ đến sức khỏe tim mạch. Để tăng cường sức khỏe tim, hãy duy trì thói quen ăn uống và tập luyện lành mạnh.',
       warning: 'Nhịp tim của bạn cao hơn mức nghỉ thông thường. Nếu tình trạng này kéo dài ngay cả khi nghỉ ngơi, nên trao đổi với bác sĩ.'
+    },
+    body_age: {
+      good: 'Tuổi cơ thể nhỏ hơn tuổi thật, cho thấy thể trạng của bạn rất tốt. Hãy tiếp tục duy trì lối sống lành mạnh.',
+      warning: 'Tuổi cơ thể lớn hơn tuổi thật. Nên chú ý hơn đến thành phần cơ thể, đặc biệt là giảm tỉ lệ mỡ, để giúp cải thiện tuổi cơ thể.'
     }
   }
 };

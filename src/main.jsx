@@ -1676,6 +1676,21 @@ function parseServerDate(value) {
   return new Date(normalized.includes('T') ? `${normalized}Z` : `${normalized}T00:00:00Z`);
 }
 
+// Whole years between a birth date and a reference date (the scan's own logged_at, not "today" —
+// a scan from a year ago should compare body_age against how old the user actually was at that
+// scan, matching what the scale's own app would have shown at the time) — used to tell whether a
+// report's "body age" reading is younger or older than the user's real chronological age (see
+// METRIC_ANALYSIS.body_age), which the report itself has no field for.
+function ageFromBirthDate(birthDate, referenceDate) {
+  const birth = parseServerDate(birthDate);
+  const ref = parseServerDate(referenceDate) || new Date();
+  if (!birth || Number.isNaN(birth.getTime()) || Number.isNaN(ref.getTime())) return null;
+  let age = ref.getFullYear() - birth.getFullYear();
+  const beforeBirthdayThisYear = ref.getMonth() < birth.getMonth() || (ref.getMonth() === birth.getMonth() && ref.getDate() < birth.getDate());
+  if (beforeBirthdayThisYear) age -= 1;
+  return age >= 0 && age < 130 ? age : null;
+}
+
 function formatDate(value, settings, options = {}) {
   const date = parseServerDate(value);
   if (!date || Number.isNaN(date.getTime())) return '';
@@ -3314,6 +3329,9 @@ function BodyWeightInput({ userId, settings }) {
         </select>
         <button className="icon-btn" onClick={save}><Check /></button>
         <button className="icon-btn" title={t('bodycomp_scan_pick')} onClick={() => setScanOpen(true)}><Camera /></button>
+        {compLogs.length > 0 && (
+          <button className="icon-btn" title={t('bodycomp_view_latest')} onClick={() => setReportIndex(compLogs.length - 1)}><Eye /></button>
+        )}
       </div>
       <div className="weight-history">
         <div className="grid grid-cols-[1fr_auto] border-b border-stone-200 pb-1 text-xs font-bold uppercase text-slate-500">
@@ -3321,15 +3339,20 @@ function BodyWeightInput({ userId, settings }) {
           <span>{t('bw_weight')}</span>
         </div>
         {history.length === 0 && <p className="py-2 text-sm text-slate-600">{t('bw_no_history')}</p>}
-        {history.map((row) => (
-          <BodyWeightHistoryRow
-            key={row.id}
-            row={row}
-            settings={settings}
-            onSaved={loadHistory}
-            onOpenReport={() => openReportFor(row.source_composition_id)}
-          />
-        ))}
+        {/* Capped to ~6 rows tall with scroll for the rest — this list grows unbounded over months
+            of scans/weigh-ins, and showing all of it inline used to push the rest of the dashboard
+            far down the page. */}
+        <div className="max-h-64 overflow-y-auto">
+          {history.map((row) => (
+            <BodyWeightHistoryRow
+              key={row.id}
+              row={row}
+              settings={settings}
+              onSaved={loadHistory}
+              onOpenReport={() => openReportFor(row.source_composition_id)}
+            />
+          ))}
+        </div>
       </div>
       {scanOpen && <BodyCompositionScanModal userId={userId} onClose={() => setScanOpen(false)} onSaved={() => { loadHistory(); loadCompLogs(); }} />}
       {reportIndex !== null && (
@@ -8124,12 +8147,20 @@ function bodyCompositionDelta(rows, index) {
   return Number((current - previous).toFixed(2));
 }
 
-function BodyCompositionDetailPopup({ metricDef, latestRow, delta, boundaries, lang, t, onClose }) {
-  const tier = gradeColorTier(latestRow?.grade);
+function BodyCompositionDetailPopup({ metricDef, latestRow, delta, boundaries, lang, t, onClose, birthDate, loggedAt }) {
+  const value = Number(latestRow?.value);
+  // Body age has no grade badge on the report at all (see BODY_COMPOSITION_METRIC_DEFS) — its
+  // tier instead comes from comparing this value against the user's real chronological age at the
+  // time of the scan, matching the source scale app's own "Analysis and suggestions" behavior for
+  // this one metric (screenshotted from the real app: "physical age smaller than actual age" ->
+  // good, the reverse -> warning). Every other metric keeps using its own report-read grade.
+  const actualAge = metricDef.key === 'body_age' ? ageFromBirthDate(birthDate, loggedAt) : null;
+  const tier = metricDef.key === 'body_age'
+    ? (actualAge !== null && Number.isFinite(value) ? (value <= actualAge ? 'good' : 'warning') : null)
+    : gradeColorTier(latestRow?.grade);
   const effectiveBoundaries = (boundaries && boundaries.length ? boundaries : DEFAULT_METRIC_BOUNDARIES[metricDef.key]) || [];
   const numericBoundaries = effectiveBoundaries.filter((b) => Number.isFinite(Number(b.max)));
   const maxBoundary = numericBoundaries.length ? Math.max(...numericBoundaries.map((b) => Number(b.max))) * 1.15 : null;
-  const value = Number(latestRow?.value);
   const markerPercent = maxBoundary && Number.isFinite(value) ? Math.min(100, Math.max(0, (value / maxBoundary) * 100)) : null;
   const analysis = metricAnalysis(metricDef.key, tier, lang);
   const description = metricDescription(metricDef.key, lang);
@@ -8250,9 +8281,9 @@ function bodyCompDeltaFor(def, row, prevRow) {
 
 // A compact, dark, read-only stat card matching the source scale app's own report styling (as
 // opposed to `BodyCompMetricCard`, which is editable and light-themed for the scan confirm form).
-// Tapping it opens the shared `BodyCompositionDetailPopup` for that metric, when it has a grade to
-// show detail for — fields like body age or fat-free weight have no grade on this report (see
-// `BODY_COMPOSITION_METRIC_DEFS`), so they render the same way but aren't tappable.
+// Tapping it opens the shared `BodyCompositionDetailPopup` for that metric — every metric has at
+// least a description to show (see shared/bodyCompositionCopy.js), even fields with no grade badge
+// on the report like body age or fat-free weight (see `BODY_COMPOSITION_METRIC_DEFS`).
 function ReportStatCard({ label, value, unit, grade, delta, onClick }) {
   const tier = gradeColorTier(grade);
   const Tag = onClick ? 'button' : 'div';
@@ -8375,7 +8406,10 @@ function BodyCompositionReportPage({ userId, settings, logs, index, onNavigate, 
   ];
   const massKeys = ['body_water_mass', 'fat_mass', 'bone_mineral_mass', 'protein_mass'];
 
-  const openPopup = (key) => bodyCompDefFor(key)?.gradeField && setPopupKey(key);
+  // Every metric def has at least a description (see shared/bodyCompositionCopy.js), even the ones
+  // with no grade badge on the report (body_age, fat_free_weight) — matching the source scale
+  // app's own behavior of every stat card being tappable for detail, not just the graded ones.
+  const openPopup = (key) => (bodyCompDefFor(key)?.gradeField || metricDescription(key, lang)) && setPopupKey(key);
   const popupDef = popupKey ? bodyCompDefFor(popupKey) : null;
 
   return (
@@ -8458,7 +8492,7 @@ function BodyCompositionReportPage({ userId, settings, logs, index, onNavigate, 
                 value={value}
                 grade={grade}
                 delta={bodyCompDeltaFor(def, row, prevRow)}
-                onClick={def.gradeField ? () => openPopup(key) : undefined}
+                onClick={() => openPopup(key)}
               />
             );
           })}
@@ -8507,6 +8541,8 @@ function BodyCompositionReportPage({ userId, settings, logs, index, onNavigate, 
             lang={lang}
             t={t}
             onClose={() => setPopupKey(null)}
+            birthDate={settings?.birth_date}
+            loggedAt={row.logged_at}
           />
         )}
       </div>
