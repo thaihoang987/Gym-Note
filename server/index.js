@@ -2511,6 +2511,16 @@ app.patch('/api/body-weight/:id', (req, res) => {
   res.json({ ok: true });
 });
 
+// Removes only this weight-tracker entry — if it came from a scan (source_composition_id set),
+// the underlying body_composition_logs report is untouched and still reachable via "view latest
+// scan"; deleting the full report is a separate action on the report page itself
+// (DELETE /api/body-composition/:id below).
+app.delete('/api/body-weight/:id', (req, res) => {
+  const userId = getUserId(req);
+  db.prepare('DELETE FROM body_weight_logs WHERE id = ? AND user_id = ?').run(Number(req.params.id), userId);
+  res.json({ ok: true });
+});
+
 const BODY_COMPOSITION_FIELDS = [
   'weight_kg', 'weight_grade', 'body_score', 'bmi', 'bmi_grade', 'body_fat_percent', 'body_fat_grade',
   'body_water_mass_kg', 'fat_mass_kg', 'bone_mineral_mass_kg', 'protein_mass_kg',

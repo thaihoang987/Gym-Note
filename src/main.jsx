@@ -3250,6 +3250,7 @@ function Dashboard({ userId, onStart, refresh, settings, onChanged }) {
 // needs to be at least as easy as the read itself.
 function BodyWeightHistoryRow({ row, settings, onSaved, onOpenReport }) {
   const t = useLang();
+  const dialog = useAppDialog();
   const [editing, setEditing] = useState(false);
   const [value, setValue] = useState(String(row.weight));
 
@@ -3258,6 +3259,15 @@ function BodyWeightHistoryRow({ row, settings, onSaved, onOpenReport }) {
     if (!Number.isFinite(next) || next <= 0 || next === row.weight) { setEditing(false); return; }
     await api(`/api/body-weight/${row.id}`, { method: 'PATCH', body: JSON.stringify({ weight: next, unit: row.unit }) });
     setEditing(false);
+    onSaved();
+  };
+
+  // Removes only this weight entry — for a scan-derived row (source_composition_id set), the
+  // underlying report itself is untouched and still reachable via "view latest scan"; deleting the
+  // full report is a separate action on the report page (see BodyCompositionReportPage).
+  const remove = async () => {
+    if (!(await dialog.confirm(t('bw_confirm_delete')))) return;
+    await api(`/api/body-weight/${row.id}`, { method: 'DELETE' });
     onSaved();
   };
 
@@ -3280,7 +3290,7 @@ function BodyWeightHistoryRow({ row, settings, onSaved, onOpenReport }) {
   }
 
   return (
-    <div className="grid grid-cols-[1fr_auto_auto] items-center gap-3 border-b border-stone-100 py-2 text-sm last:border-b-0">
+    <div className="grid grid-cols-[1fr_auto_auto_auto] items-center gap-2 border-b border-stone-100 py-2 text-sm last:border-b-0">
       <span className="font-semibold text-slate-700">{formatDate(row.logged_at, settings)}</span>
       <button type="button" className="font-black text-slate-950" title={t('bw_edit')} onClick={() => setEditing(true)}>
         {row.weight} {row.unit}
@@ -3288,6 +3298,7 @@ function BodyWeightHistoryRow({ row, settings, onSaved, onOpenReport }) {
       {row.source_composition_id
         ? <button type="button" className="icon-btn" title={t('bodycomp_view_report')} onClick={onOpenReport}><ChevronRight size={16} /></button>
         : <span className="w-9" />}
+      <button type="button" className="icon-btn text-red-600" title={t('bw_delete')} onClick={remove}><Trash2 size={16} /></button>
     </div>
   );
 }
