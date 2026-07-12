@@ -1,13 +1,16 @@
 # syntax=docker/dockerfile:1
-# Must match the final runtime stage's base image (bookworm, glibc) — npm install here resolves
-# native addons (better-sqlite3) to prebuilt binaries for whatever libc this stage runs on, and a
-# node_modules built against musl (Alpine) segfaults/fails to load when copied into a glibc runtime
-# (or vice versa). This stage used to be node:22-alpine, matching an all-Alpine runtime; when the
-# final stage below switched to bookworm-slim for PaddlePaddle's glibc requirement, this one had to
-# switch too — confirmed by an actual production outage (silent crash, zero log output, since
-# require('better-sqlite3') fails before any of the app's own logging runs) caused by exactly this
-# mismatch.
-FROM node:22-bookworm-slim AS deps
+# Must match the final runtime stage's base image (glibc, via Dockerfile.base -> node:22-bookworm-
+# slim) — npm install here resolves native addons (better-sqlite3) to prebuilt binaries for
+# whatever libc this stage runs on, and a node_modules built against musl (Alpine) segfaults/fails
+# to load when copied into a glibc runtime (or vice versa). This stage used to be node:22-alpine,
+# matching an all-Alpine runtime; when the final stage switched to bookworm-slim for PaddlePaddle's
+# glibc requirement, this one had to switch too — confirmed by an actual production outage (silent
+# crash, zero log output, since require('better-sqlite3') fails before any of the app's own logging
+# runs) caused by exactly this mismatch. Reuses the same base image as the final stage (rather than
+# plain node:22-bookworm-slim) purely so there's one glibc version to keep in sync, not two — the
+# extra Python/PaddleOCR weight in this intermediate stage costs nothing in the final image, since
+# multi-stage builds only ship the layers actually copied out of it.
+FROM ghcr.io/thaihoang987/gym-note-base:latest AS deps
 WORKDIR /app
 COPY package*.json ./
 RUN npm install
@@ -25,35 +28,15 @@ RUN git clone --depth 1 https://github.com/hasaneyldrm/exercises-dataset.git has
     && rm -rf hasaneyldrm-exercises-dataset/.git
 
 # Body-composition scan OCR runs on PaddleOCR (Python), not Tesseract — see server/ocr/paddleWorker.py
-# for why. PaddlePaddle's official CPU wheel is a manylinux (glibc) build with no musl/Alpine
-# support, so the final runtime image can't be Alpine-based like the build stages above; bookworm
-# (Debian 12) is the smallest official Node image with glibc.
-FROM node:22-bookworm-slim
+# for why. The Python/PaddleOCR runtime itself (apt packages, pip packages, pre-downloaded OCR
+# models) lives in Dockerfile.base, built and pushed separately (see .github/workflows/
+# docker-base.yml) — routine app-code commits like this Dockerfile's own COPY layers below never
+# touch those hundred-plus-MB layers, so a normal deploy only pulls the thin app-code diff instead
+# of re-downloading PaddlePaddle every time.
+FROM ghcr.io/thaihoang987/gym-note-base:latest
 WORKDIR /app
 ENV NODE_ENV=production
 ENV PORT=3001
-# libgl1/libglib2.0-0: not used directly, but opencv-python (a paddleocr dependency) dlopens
-# libGL.so.1 at import time and fails immediately without it — a well-known opencv-in-a-slim-image
-# gap, not something paddleocr documents up front.
-# libgomp1: PaddlePaddle's compiled libpaddle.so links against libgomp (GNU OpenMP, used for its
-# CPU-parallel kernels) — bookworm-slim doesn't ship it by default, so without this package the
-# `import paddleocr` below fails immediately with "ImportError: libgomp.so.1: cannot open shared
-# object file", confirmed by an actual CI build failure on this exact image.
-# Cache-mounted (not a --no-cache-dir install): apt's package cache and pip's wheel cache persist
-# in BuildKit's cache store (exported/imported via the workflow's `cache-to/from: type=gha`)
-# independently of the image layer graph. A plain layer-cached RUN only helps when this exact
-# instruction and everything before it is byte-for-byte unchanged from a previous build — any
-# earlier line changing (as happened twice in a row fixing unrelated things) busts it and forces a
-# full re-download of paddlepaddle/paddleocr (several hundred MB) from PyPI. The cache mounts let a
-# layer-cache miss still reuse already-downloaded packages instead of re-fetching them.
-# Versions pinned to what was verified locally (paddlepaddle 3.3.1, paddleocr 3.7.0) rather than
-# left floating, so a new upstream release can't silently change build/runtime behavior again.
-RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
-    --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
-    apt-get update && apt-get install -y --no-install-recommends \
-      python3 python3-pip libgl1 libglib2.0-0 libgomp1
-RUN --mount=type=cache,target=/root/.cache/pip \
-    pip3 install --break-system-packages paddlepaddle==3.3.1 paddleocr==3.7.0
 
 LABEL net.unraid.docker.icon="https://raw.githubusercontent.com/thaihoang987/Gym-Note/main/public/pwa-512.png"
 LABEL org.opencontainers.image.source="https://github.com/thaihoang987/Gym-Note"
@@ -66,11 +49,6 @@ COPY --from=build /app/dist ./dist
 COPY --from=build /app/server ./server
 COPY --from=build /app/shared ./shared
 COPY --from=dataset /app/hasaneyldrm-exercises-dataset ./hasaneyldrm-exercises-dataset
-
-# Pre-downloads PaddleOCR's detection/recognition model files into this layer at build time (same
-# config as server/ocr/paddleWorker.py) so the container never needs internet access at runtime and
-# the first real scan doesn't silently eat a ~1 minute model-download delay.
-RUN python3 -c "from paddleocr import PaddleOCR; PaddleOCR(use_doc_orientation_classify=False, use_doc_unwarping=False, use_textline_orientation=False, enable_mkldnn=False, text_detection_model_name='PP-OCRv6_small_det', text_recognition_model_name='PP-OCRv6_small_rec')"
 
 RUN mkdir -p /app/data /app/uploads
 VOLUME ["/app/data"]
