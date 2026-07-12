@@ -8158,30 +8158,14 @@ function bodyCompositionDelta(rows, index) {
   return Number((current - previous).toFixed(2));
 }
 
-// Builds this one metric's full trend series from the raw log rows — shared by the Analytics
-// page's own chart (BodyCompositionSection) and the detail popup's compact history chart below, so
-// a metric's trend always looks/reads the same wherever it's shown.
-function bodyCompTrendRows(logs, metricDef, settings) {
-  if (!metricDef) return [];
-  return logs
-    .filter((row) => row[metricDef.valueField] !== null && row[metricDef.valueField] !== undefined)
-    .map((row) => ({
-      logged_at: row.logged_at,
-      ts: parseServerDate(row.logged_at)?.getTime(),
-      label: formatDate(row.logged_at, settings, { day: '2-digit', month: '2-digit' }),
-      value: row[metricDef.valueField],
-      grade: metricDef.gradeField ? row[metricDef.gradeField] : null
-    }));
-}
-
-function BodyCompositionDetailPopup({ metricDef, latestRow, delta, boundaries, lang, t, onClose, settings, loggedAt, logs }) {
+function BodyCompositionDetailPopup({ metricDef, latestRow, delta, boundaries, lang, t, onClose, birthDate, loggedAt }) {
   const value = Number(latestRow?.value);
   // Body age has no grade badge on the report at all (see BODY_COMPOSITION_METRIC_DEFS) — its
   // tier instead comes from comparing this value against the user's real chronological age at the
   // time of the scan, matching the source scale app's own "Analysis and suggestions" behavior for
   // this one metric (screenshotted from the real app: "physical age smaller than actual age" ->
   // good, the reverse -> warning). Every other metric keeps using its own report-read grade.
-  const actualAge = metricDef.key === 'body_age' ? ageFromBirthDate(settings?.birth_date, loggedAt) : null;
+  const actualAge = metricDef.key === 'body_age' ? ageFromBirthDate(birthDate, loggedAt) : null;
   const tier = metricDef.key === 'body_age'
     ? (actualAge !== null && Number.isFinite(value) ? (value <= actualAge ? 'good' : 'warning') : null)
     : gradeColorTier(latestRow?.grade);
@@ -8191,41 +8175,6 @@ function BodyCompositionDetailPopup({ metricDef, latestRow, delta, boundaries, l
   const markerPercent = maxBoundary && Number.isFinite(value) ? Math.min(100, Math.max(0, (value / maxBoundary) * 100)) : null;
   const analysis = metricAnalysis(metricDef.key, tier, lang);
   const description = metricDescription(metricDef.key, lang);
-
-  // History chart is opt-in via the `logs` prop — every call site now passes it, but this keeps
-  // the popup usable standalone (e.g. a future caller with only a single reading) without crashing.
-  const trendRows = logs ? bodyCompTrendRows(logs, metricDef, settings) : [];
-  const tickDateFormat = (v) => formatDate(v, settings, { day: '2-digit', month: '2-digit' });
-  const trendChartOption = useMemo(() => ({
-    grid: { top: 12, right: 12, bottom: 28, left: 40 },
-    xAxis: {
-      type: 'time',
-      axisLine: { lineStyle: { color: '#cbd5e1' } },
-      axisLabel: { color: '#94a3b8', fontSize: 10, formatter: tickDateFormat, hideOverlap: true }
-    },
-    yAxis: {
-      type: 'value',
-      min: (v) => Math.floor(v.min - 1),
-      max: (v) => Math.ceil(v.max + 1),
-      axisLine: { show: false },
-      axisLabel: { color: '#94a3b8', fontSize: 10 },
-      splitLine: { lineStyle: { color: '#e2e8f0', type: 'dashed' } }
-    },
-    tooltip: {
-      trigger: 'axis',
-      formatter: (params) => `${tickDateFormat(params[0].value[0])}<br/>${params[0].value[1]} ${metricDef.unit}`
-    },
-    dataZoom: [{ type: 'inside', xAxisIndex: 0, zoomOnMouseWheel: true, moveOnMouseMove: true, moveOnMouseWheel: false }],
-    series: [{
-      type: 'line',
-      data: trendRows.map((row) => [row.ts, row.value]),
-      color: '#2563eb',
-      lineStyle: { width: 2 },
-      symbolSize: 5,
-      smooth: true
-    }]
-  }), [trendRows, metricDef, settings]);
-
   return (
     <div className="fixed inset-0 z-[10000] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onClick={onClose}>
       <div className="w-full max-w-md max-h-[85vh] overflow-y-auto rounded-2xl bg-white shadow-2xl p-4" onClick={(e) => e.stopPropagation()}>
@@ -8248,12 +8197,6 @@ function BodyCompositionDetailPopup({ metricDef, latestRow, delta, boundaries, l
           <p className="mt-2 text-sm text-slate-600">
             {delta > 0 ? '↑' : delta < 0 ? '↓' : ''} {Math.abs(delta)} {metricDef.unit} {t('bodycomp_vs_previous')}
           </p>
-        )}
-        {trendRows.length > 1 && (
-          <div className="mt-3 border-t border-slate-200 pt-3">
-            <p className="mb-1 text-sm font-bold text-slate-800">{t('bodycomp_history_title')}</p>
-            <EChart option={trendChartOption} height={140} />
-          </div>
         )}
         {numericBoundaries.length > 0 && (
           <div className="mt-4">
@@ -8609,9 +8552,8 @@ function BodyCompositionReportPage({ userId, settings, logs, index, onNavigate, 
             lang={lang}
             t={t}
             onClose={() => setPopupKey(null)}
-            settings={settings}
+            birthDate={settings?.birth_date}
             loggedAt={row.logged_at}
-            logs={logs}
           />
         )}
       </div>
@@ -8741,9 +8683,6 @@ function BodyCompositionSection({ userId, settings }) {
           lang={lang}
           t={t}
           onClose={() => setDetailOpen(false)}
-          settings={settings}
-          loggedAt={latestRow.logged_at}
-          logs={logs}
         />
       )}
     </div>
