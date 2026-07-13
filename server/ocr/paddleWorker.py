@@ -40,6 +40,10 @@ CONF_THRESHOLD = 0.5
 
 
 def run_ocr(image_path):
+    from PIL import Image
+    import tempfile
+    import os
+
     result = _ocr.ocr(image_path)
     lines = []
     for page in result:
@@ -57,6 +61,44 @@ def run_ocr(image_path):
                 'x0': x0, 'y0': y0, 'x1': x1, 'y1': y1,
                 'cx': (x0 + x1) / 2, 'cy': (y0 + y1) / 2,
             })
+
+    # Fallback: if body_score ("79 points") not detected in full image, crop from ORIGINAL image
+    # BEFORE PaddleOCR scales it. The body_score area (y~1100-1150) sometimes gets missed in
+    # full-page OCR but detects reliably when cropped from original and processed separately.
+    has_body_score = any('79' in line['text'] or 'points' in line['text'].lower() for line in lines)
+    if not has_body_score:
+        try:
+            img = Image.open(image_path)
+            # Crop body_score region from ORIGINAL image (y=800-1200, full width)
+            # Crop BEFORE PaddleOCR scaling to preserve resolution
+            crop = img.crop((0, 800, img.width, 1200))
+            # Save crop to temp file
+            with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as tmp:
+                crop_path = tmp.name
+                crop.save(crop_path)
+            try:
+                crop_result = _ocr.ocr(crop_path)
+                for page in crop_result:
+                    texts = page.get('rec_texts', [])
+                    scores = page.get('rec_scores', [])
+                    boxes = page.get('rec_boxes', [])
+                    for text, score, box in zip(texts, scores, boxes):
+                        text = text.strip()
+                        if not text or score < CONF_THRESHOLD:
+                            continue
+                        x0, y0, x1, y1 = [int(v) for v in box]
+                        # Adjust y-coords back to full image space
+                        lines.append({
+                            'text': text,
+                            'conf': round(float(score), 4),
+                            'x0': x0, 'y0': y0 + 800, 'x1': x1, 'y1': y1 + 800,
+                            'cx': (x0 + x1) / 2, 'cy': (y0 + y1) / 2 + 800,
+                        })
+            finally:
+                os.unlink(crop_path)
+        except Exception:
+            pass  # If fallback crop fails, continue with existing lines
+
     return lines
 
 
