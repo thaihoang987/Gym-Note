@@ -1168,12 +1168,14 @@ button:disabled {
 
 /* Exercise picker wheel: sized well above .compact-wheel-picker (which was built for short
    numeric labels, not a thumbnail + exercise name) so both the GIF and the text are actually
-   legible while scrolling. Only 3 rows visible (not 5) — with as few as 1 logged exercise, 5 rows
-   of a picker this size left most of it blank; 3 rows @ a bigger optionItemHeight (see the
-   ReactWheelPicker props in ExerciseProgressPicker) keeps the same "always show a few rows of
-   context" feel without towering over the actual content when there isn't much to scroll through. */
+   legible while scrolling. Height matches visibleCount(4) x optionItemHeight(84) in
+   ExerciseProgressPicker — visibleCount has to be a multiple of 4 (the wheel library's own
+   requirement; every other value rendered every row but the selected one as visibility:hidden,
+   which is what made the picker look empty no matter how tall the container was). With only one
+   exercise there's nothing to pick between, so that case skips the wheel for a plain
+   `.exercise-wheel-single` static row instead of a picker with 3 permanently-blank slots. */
 .exercise-wheel-picker {
-  @apply h-[252px] w-full min-w-0 max-w-full overflow-hidden rounded-lg bg-white ring-1 ring-slate-200;
+  @apply h-[336px] w-full min-w-0 max-w-full overflow-hidden rounded-lg bg-white ring-1 ring-slate-200;
 }
 
 .exercise-wheel-picker [data-rwp] {
@@ -1185,7 +1187,7 @@ button:disabled {
 }
 
 .exercise-wheel-option {
-  @apply text-base font-bold text-slate-500;
+  @apply text-lg font-bold text-slate-500;
 }
 
 .exercise-wheel-highlight-wrapper {
@@ -1193,7 +1195,7 @@ button:disabled {
 }
 
 .exercise-wheel-highlight {
-  @apply text-lg font-black text-orange-800;
+  @apply text-xl font-black text-orange-800;
 }
 
 .exercise-wheel-label {
@@ -1202,6 +1204,49 @@ button:disabled {
 
 .exercise-wheel-label strong {
   @apply min-w-0 flex-1 truncate;
+}
+
+.exercise-wheel-single {
+  @apply rounded-lg bg-orange-100 p-3 ring-1 ring-orange-200;
+}
+
+.exercise-wheel-single strong {
+  @apply text-lg font-black text-orange-800;
+}
+
+/* Metric picker wheel (body composition chart's metric switcher) — same bigger-wheel treatment as
+   .exercise-wheel-picker, full width instead of squeezed into a corner box next to the section
+   title, so longer labels like "Bone mineral percentage" are actually readable. Height matches
+   visibleCount(4) x optionItemHeight(56) in BodyCompositionSection — visibleCount must be a
+   multiple of 4 (see the longer comment on .exercise-wheel-picker above). There are always all 13
+   BODY_COMPOSITION_METRIC_DEFS to pick from, so unlike the exercise wheel this never needs a
+   single-item fallback. */
+.metric-wheel-picker {
+  @apply h-[224px] w-full min-w-0 max-w-full overflow-hidden rounded-lg bg-white ring-1 ring-slate-200;
+}
+
+.metric-wheel-picker [data-rwp] {
+  cursor: grab;
+}
+
+.metric-wheel-picker [data-rwp]:active {
+  cursor: grabbing;
+}
+
+.metric-wheel-option {
+  @apply text-base font-bold text-slate-500;
+}
+
+.metric-wheel-highlight-wrapper {
+  @apply rounded-lg bg-orange-100 ring-1 ring-orange-200;
+}
+
+.metric-wheel-highlight {
+  @apply text-lg font-black text-orange-800;
+}
+
+.metric-wheel-label {
+  @apply block w-full truncate px-4 text-center;
 }
 
 @media (max-width: 640px) {

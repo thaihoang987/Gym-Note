@@ -8770,21 +8770,38 @@ function BodyCompositionSection({ userId, settings }) {
     }]
   }), [rows, chartDomain, metricDef, settings]);
 
+  // Full-width, 3-row wheel (not squeezed into a corner box) so BODY_COMPOSITION_METRIC_DEFS'
+  // longer labels ("Bone mineral percentage") are actually readable, and the previous/next metric
+  // peeks in above/below the selected one while scrolling instead of the picker just looking empty.
+  const metricPickerOptions = useMemo(() => BODY_COMPOSITION_METRIC_DEFS.map((def) => ({
+    value: def.key,
+    label: <span className="metric-wheel-label">{t(def.labelKey)}</span>,
+    textValue: t(def.labelKey)
+  })), [t]);
+
   if (!logs.length) return null;
 
   return (
     <div className="panel">
-      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-        <h3 className="font-bold">{t('bodycomp_section_title')}</h3>
-        <div className="w-44">
-          <WheelPicker
-            dense
+      <h3 className="mb-2 font-bold">{t('bodycomp_section_title')}</h3>
+      <div className="mb-3">
+        <WheelPickerWrapper className="metric-wheel-picker">
+          <ReactWheelPicker
             value={metricKey}
-            options={BODY_COMPOSITION_METRIC_DEFS.map((def) => def.key)}
-            formatLabel={(key) => t(BODY_COMPOSITION_METRIC_DEFS.find((def) => def.key === key)?.labelKey)}
-            onChange={setMetricKey}
+            options={metricPickerOptions}
+            onValueChange={(key) => { if (BODY_COMPOSITION_METRIC_DEFS.some((def) => def.key === key)) setMetricKey(key); }}
+            infinite={false}
+            visibleCount={4}
+            optionItemHeight={56}
+            dragSensitivity={3}
+            scrollSensitivity={5}
+            classNames={{
+              optionItem: 'metric-wheel-option',
+              highlightWrapper: 'metric-wheel-highlight-wrapper',
+              highlightItem: 'metric-wheel-highlight'
+            }}
           />
-        </div>
+        </WheelPickerWrapper>
       </div>
       <div className="range-bar mb-3">
         {rangeOptions.map(([key, label]) => (
@@ -9111,7 +9128,7 @@ function ExerciseProgressPicker({ exercises, value, onChange }) {
     value: String(exercise.id),
     label: (
       <span className="exercise-wheel-label">
-        <GifThumb exercise={exercise} className="h-16 w-16" rounded="rounded-md" autoplay />
+        <GifThumb exercise={exercise} className="h-[72px] w-[72px]" rounded="rounded-md" autoplay />
         <strong>{exercise.name}</strong>
       </span>
     ),
@@ -9121,6 +9138,21 @@ function ExerciseProgressPicker({ exercises, value, onChange }) {
   if (!exercises.length) return <p className="mb-3 text-sm text-slate-400">{t('analytics_no_exercises')}</p>;
 
   const currentValue = String(value || exercises[0].id);
+
+  // With only one exercise there's nothing to pick between — the wheel library requires
+  // visibleCount to be a multiple of 4 (every non-multiple-of-4 value renders every row but the
+  // selected one as visibility:hidden, which is why this looked "empty" before), so it can't be
+  // shrunk down to fit just 1 real row anyway. A single exercise gets a plain static row instead.
+  if (exercises.length === 1) {
+    return (
+      <div className="mb-3">
+        <span className="exercise-wheel-label exercise-wheel-single">
+          <GifThumb exercise={exercises[0]} className="h-[72px] w-[72px]" rounded="rounded-md" autoplay />
+          <strong>{exercises[0].name}</strong>
+        </span>
+      </div>
+    );
+  }
 
   const changeValue = (nextValue) => {
     const matched = exercises.find((exercise) => String(exercise.id) === String(nextValue));
@@ -9135,7 +9167,7 @@ function ExerciseProgressPicker({ exercises, value, onChange }) {
           options={pickerOptions}
           onValueChange={changeValue}
           infinite={false}
-          visibleCount={3}
+          visibleCount={4}
           optionItemHeight={84}
           dragSensitivity={3}
           scrollSensitivity={5}
