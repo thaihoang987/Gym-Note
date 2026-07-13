@@ -340,7 +340,7 @@ export function parseBodyCompositionLines(rawLines) {
   // tell which of the 10 zone labels is actually lit up — pre-fill a best-effort guess from BMI +
   // body fat percent instead (see classifyBodyType); the confirm form's picker still lets the user
   // correct it by eye.
-  result.body_type_zone = classifyBodyType(result.bmi, result.body_fat_percent);
+  result.body_type_zone = classifyBodyType(result.bmi, result.body_fat_percent, result.body_fat_grade);
   if (result.body_type_zone !== null) derivedFields.add('body_type_zone');
 
   result.standard_weight_kg = standardWeightRaw;

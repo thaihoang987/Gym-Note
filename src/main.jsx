@@ -3456,6 +3456,7 @@ function BodyCompositionScanModal({ userId, onClose, onSaved }) {
   const [rawRegionText, setRawRegionText] = useState(null);
   const [showRaw, setShowRaw] = useState(false);
   const [error, setError] = useState('');
+  const [saving, setSaving] = useState(false);
 
   const processFile = async (file) => {
     setStep('loading');
@@ -3507,10 +3508,11 @@ function BodyCompositionScanModal({ userId, onClose, onSaved }) {
   const isLastImage = fileIndex >= files.length - 1;
 
   // Moves on to the next queued image (if any) after the current one is saved or explicitly
-  // skipped, or finishes the whole batch once the last image is done.
+  // skipped, or finishes the whole batch once the last image is done. `onSaved` is no longer
+  // called from here — see `save` below, which now refreshes after every image instead of only
+  // once at the very end.
   const advance = async () => {
     if (isLastImage) {
-      onSaved?.();
       onClose();
       return;
     }
@@ -3520,9 +3522,28 @@ function BodyCompositionScanModal({ userId, onClose, onSaved }) {
   };
 
   const save = async () => {
+    if (saving) return; // guards against a double-click firing two saves for the same photo
+    setSaving(true);
+    setError('');
     const { logged_at, derived_fields, uncertain_fields, ...savedFields } = fields;
-    await api('/api/body-composition', { method: 'POST', body: JSON.stringify({ userId, photoPath, loggedAt: new Date(loggedAt).toISOString(), ...savedFields }) });
+    try {
+      await api('/api/body-composition', { method: 'POST', body: JSON.stringify({ userId, photoPath, loggedAt: new Date(loggedAt).toISOString(), ...savedFields }) });
+    } catch (err) {
+      // In a multi-photo batch, OCR + save on later photos can fail on modest hardware after
+      // several back-to-back requests. Surfacing the error here (instead of letting it throw
+      // unhandled from this onClick) keeps the batch from silently getting stuck on this image —
+      // and since every earlier image in the batch already refreshed the app when it saved (below),
+      // nothing already confirmed is lost, only this one image needs a retry.
+      setError(err.message || t('bodycomp_scan_save_failed'));
+      setSaving(false);
+      return;
+    }
+    // Refresh after every save, not just the last one in the batch — otherwise one failed image
+    // partway through would have hidden every image that DID save successfully, since the caller's
+    // refresh previously only ran once at the very end (see `advance` above).
+    onSaved?.();
     await advance();
+    setSaving(false);
   };
 
   // Discards the current image without saving it (e.g. a blurry shot) and moves on — only shown
@@ -3632,12 +3653,13 @@ function BodyCompositionScanModal({ userId, onClose, onSaved }) {
                 ))}
               </details>
             )}
+            {error && <p className="text-sm text-red-600">{error}</p>}
             <div className="flex gap-2 pt-2">
-              <button className="ghost-btn flex-1" onClick={files.length > 1 ? skip : () => setStep('pick')}>
+              <button className="ghost-btn flex-1" disabled={saving} onClick={files.length > 1 ? skip : () => setStep('pick')}>
                 {files.length > 1 ? t('bodycomp_scan_skip') : t('bodycomp_scan_retry')}
               </button>
-              <button className="primary flex-1" onClick={save}>
-                {files.length > 1 && !isLastImage ? t('bodycomp_scan_save_next') : t('bodycomp_scan_save')}
+              <button className="primary flex-1" disabled={saving} onClick={save}>
+                {saving ? t('bodycomp_scan_saving') : (files.length > 1 && !isLastImage ? t('bodycomp_scan_save_next') : t('bodycomp_scan_save'))}
               </button>
             </div>
           </div>
