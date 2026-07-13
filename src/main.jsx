@@ -8791,7 +8791,7 @@ function BodyCompositionSection({ userId, settings }) {
             options={metricPickerOptions}
             onValueChange={(key) => { if (BODY_COMPOSITION_METRIC_DEFS.some((def) => def.key === key)) setMetricKey(key); }}
             infinite={false}
-            visibleCount={4}
+            visibleCount={8}
             optionItemHeight={56}
             dragSensitivity={3}
             scrollSensitivity={5}
@@ -9167,7 +9167,7 @@ function ExerciseProgressPicker({ exercises, value, onChange }) {
           options={pickerOptions}
           onValueChange={changeValue}
           infinite={false}
-          visibleCount={4}
+          visibleCount={8}
           optionItemHeight={84}
           dragSensitivity={3}
           scrollSensitivity={5}

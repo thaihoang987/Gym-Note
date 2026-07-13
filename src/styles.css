@@ -1168,12 +1168,24 @@ button:disabled {
 
 /* Exercise picker wheel: sized well above .compact-wheel-picker (which was built for short
    numeric labels, not a thumbnail + exercise name) so both the GIF and the text are actually
-   legible while scrolling. Height matches visibleCount(4) x optionItemHeight(84) in
-   ExerciseProgressPicker — visibleCount has to be a multiple of 4 (the wheel library's own
-   requirement; every other value rendered every row but the selected one as visibility:hidden,
-   which is what made the picker look empty no matter how tall the container was). With only one
-   exercise there's nothing to pick between, so that case skips the wheel for a plain
-   `.exercise-wheel-single` static row instead of a picker with 3 permanently-blank slots. */
+   legible while scrolling.
+   ExerciseProgressPicker uses visibleCount=8, not 4. The wheel library computes each ring item's
+   3D depth as `optionItemHeight / tan(360deg / visibleCount)` — at visibleCount=4 that angle is
+   exactly 90deg, a mathematical singularity for tan(). Floating-point tan(90deg) doesn't throw, it
+   just returns some enormous finite number (magnitude depends on rounding error, which varies by
+   browser/engine), collapsing the computed depth to ~0. That's why every row but the selected one
+   rendered as visibility:hidden regardless of container size: with ~0 depth, rotating a row around
+   the X axis moves it nowhere, so only the one row already facing forward at 0deg ever showed.
+   8 keeps "visibleCount must be a multiple of 4" (the library's own documented requirement) while
+   landing on a 45deg step, nowhere near that singularity. Confirmed via the browser's actual
+   computed transform: translateZ came back as literal ~0 ("3.42901e-15px") at visibleCount=4 and a
+   proper depth ("84px") at visibleCount=8 — reproduced consistently at narrow/mobile viewport
+   widths, which is also why an earlier fix attempt (also using an unsafe visibleCount) verified as
+   working in one browser/viewport but was still broken for the user reporting it in another.
+   Container height (336px here) is independent of visibleCount — it's how much of the ring this
+   element's own height/overflow exposes, unrelated to the depth math above. With only one exercise
+   there's nothing to pick between, so that case skips the wheel for a plain `.exercise-wheel-single`
+   static row instead of a picker with permanently-blank slots. */
 .exercise-wheel-picker {
   @apply h-[336px] w-full min-w-0 max-w-full overflow-hidden rounded-lg bg-white ring-1 ring-slate-200;
 }
@@ -1216,11 +1228,11 @@ button:disabled {
 
 /* Metric picker wheel (body composition chart's metric switcher) — same bigger-wheel treatment as
    .exercise-wheel-picker, full width instead of squeezed into a corner box next to the section
-   title, so longer labels like "Bone mineral percentage" are actually readable. Height matches
-   visibleCount(4) x optionItemHeight(56) in BodyCompositionSection — visibleCount must be a
-   multiple of 4 (see the longer comment on .exercise-wheel-picker above). There are always all 13
-   BODY_COMPOSITION_METRIC_DEFS to pick from, so unlike the exercise wheel this never needs a
-   single-item fallback. */
+   title, so longer labels like "Bone mineral percentage" are actually readable. Also uses
+   visibleCount=8 in BodyCompositionSection for the same reason .exercise-wheel-picker does — see
+   the long comment there about visibleCount=4 hitting a tan(90deg) singularity. There are always
+   all 13 BODY_COMPOSITION_METRIC_DEFS to pick from, so unlike the exercise wheel this never needs
+   a single-item fallback. */
 .metric-wheel-picker {
   @apply h-[224px] w-full min-w-0 max-w-full overflow-hidden rounded-lg bg-white ring-1 ring-slate-200;
 }
