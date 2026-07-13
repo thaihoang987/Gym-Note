@@ -1166,6 +1166,41 @@ button:disabled {
   @apply text-[10px] font-black uppercase text-slate-500;
 }
 
+/* Exercise picker wheel: sized well above .compact-wheel-picker (which was built for short
+   numeric labels, not a thumbnail + exercise name) so both the GIF and the text are actually
+   legible while scrolling. */
+.exercise-wheel-picker {
+  @apply h-[300px] w-full min-w-0 max-w-full overflow-hidden rounded-lg bg-white ring-1 ring-slate-200;
+}
+
+.exercise-wheel-picker [data-rwp] {
+  cursor: grab;
+}
+
+.exercise-wheel-picker [data-rwp]:active {
+  cursor: grabbing;
+}
+
+.exercise-wheel-option {
+  @apply text-sm font-bold text-slate-500;
+}
+
+.exercise-wheel-highlight-wrapper {
+  @apply rounded-lg bg-orange-100 ring-1 ring-orange-200;
+}
+
+.exercise-wheel-highlight {
+  @apply text-base font-black text-orange-800;
+}
+
+.exercise-wheel-label {
+  @apply flex w-full items-center gap-3 px-4 text-left;
+}
+
+.exercise-wheel-label strong {
+  @apply min-w-0 flex-1 truncate;
+}
+
 @media (max-width: 640px) {
   .workout-card {
     @apply p-3;

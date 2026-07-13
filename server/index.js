@@ -2448,12 +2448,12 @@ app.get('/api/analytics', (req, res) => {
     duration_minutes: formatMinutes(row.duration_seconds)
   }));
   const exercises = all(`
-    SELECT DISTINCT e.id, e.name, e.image_path
+    SELECT DISTINCT e.id, e.name, e.image_path, e.gif_path
     FROM workout_logs wl
     JOIN exercises e ON e.id = wl.exercise_id
     WHERE wl.user_id = ?
     ORDER BY e.name
-  `, [userId]).map((row) => ({ id: row.id, name: row.name, imageUrl: assetUrl(row.image_path) }));
+  `, [userId]).map((row) => ({ id: row.id, name: row.name, imageUrl: assetUrl(row.image_path), gifUrl: assetUrl(row.gif_path) }));
   const routines = all(`
     SELECT DISTINCT COALESCE(r.id, -ws.group_id, 0) AS id, COALESCE(r.name, cg.name, 'Buổi tập tự do') AS name
     FROM workout_sessions ws

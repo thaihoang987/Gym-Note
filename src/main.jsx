@@ -9100,16 +9100,52 @@ function Analytics({ userId, settings }) {
 // search box isn't needed to keep the list scannable.
 function ExerciseProgressPicker({ exercises, value, onChange }) {
   const t = useLang();
+  // Uses ReactWheelPicker/WheelPickerWrapper directly instead of the generic `WheelPicker` helper
+  // (used elsewhere for plain numeric values like weight/reps) — an exercise needs its GIF
+  // thumbnail next to the name to actually be recognizable while scrolling, which formatLabel's
+  // plain-text slot can't provide, and needs a taller row/picker than the compact numeric pickers
+  // to fit that thumbnail without feeling cramped.
+  // useMemo has to run before the "no exercises" early return below — hooks can never be called
+  // conditionally, and this component re-renders both with and without exercises.
+  const pickerOptions = useMemo(() => exercises.map((exercise) => ({
+    value: String(exercise.id),
+    label: (
+      <span className="exercise-wheel-label">
+        <GifThumb exercise={exercise} className="h-11 w-11" rounded="rounded-md" autoplay />
+        <strong>{exercise.name}</strong>
+      </span>
+    ),
+    textValue: exercise.name
+  })), [exercises]);
+
   if (!exercises.length) return <p className="mb-3 text-sm text-slate-400">{t('analytics_no_exercises')}</p>;
+
+  const currentValue = String(value || exercises[0].id);
+
+  const changeValue = (nextValue) => {
+    const matched = exercises.find((exercise) => String(exercise.id) === String(nextValue));
+    if (matched) onChange(matched.id);
+  };
+
   return (
     <div className="mb-3">
-      <WheelPicker
-        dense
-        value={value || exercises[0].id}
-        options={exercises.map((exercise) => exercise.id)}
-        formatLabel={(id) => exercises.find((exercise) => exercise.id === id)?.name || id}
-        onChange={onChange}
-      />
+      <WheelPickerWrapper className="exercise-wheel-picker">
+        <ReactWheelPicker
+          value={currentValue}
+          options={pickerOptions}
+          onValueChange={changeValue}
+          infinite={false}
+          visibleCount={5}
+          optionItemHeight={60}
+          dragSensitivity={3}
+          scrollSensitivity={5}
+          classNames={{
+            optionItem: 'exercise-wheel-option',
+            highlightWrapper: 'exercise-wheel-highlight-wrapper',
+            highlightItem: 'exercise-wheel-highlight'
+          }}
+        />
+      </WheelPickerWrapper>
     </div>
   );
 }
