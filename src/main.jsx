@@ -8189,7 +8189,7 @@ function BodyCompositionDetailPopup({ metricDef, latestRow, delta, boundaries, l
   const numericBoundaries = effectiveBoundaries.filter((b) => Number.isFinite(Number(b.max)));
   const maxBoundary = numericBoundaries.length ? Math.max(...numericBoundaries.map((b) => Number(b.max))) * 1.15 : null;
   const markerPercent = maxBoundary && Number.isFinite(value) ? Math.min(100, Math.max(0, (value / maxBoundary) * 100)) : null;
-  const analysis = metricAnalysis(metricDef.key, tier, lang);
+  const analysis = metricAnalysis(metricDef.key, tier, lang, { value, boundaries: numericBoundaries, label: t(metricDef.labelKey) });
   const description = metricDescription(metricDef.key, lang);
 
   // History chart is opt-in via the `logs` prop — every call site now passes it, but this keeps
@@ -8480,8 +8480,29 @@ function BodyCompositionReportPage({ userId, settings, logs, index, onNavigate, 
   const openPopup = (key) => (bodyCompDefFor(key)?.gradeField || metricDescription(key, lang)) && setPopupKey(key);
   const popupDef = popupKey ? bodyCompDefFor(popupKey) : null;
 
+  // Swipe left/right between scans, mirroring the prev/next arrow buttons above — disabled while
+  // the metric detail popup is open so a swipe inside it (e.g. panning the history chart) doesn't
+  // also flip the whole report underneath.
+  const touchStartRef = React.useRef(null);
+  const handleReportTouchStart = (e) => {
+    if (popupKey) return;
+    const touch = e.touches[0];
+    touchStartRef.current = { x: touch.clientX, y: touch.clientY };
+  };
+  const handleReportTouchEnd = (e) => {
+    const start = touchStartRef.current;
+    touchStartRef.current = null;
+    if (!start || !onNavigate || popupKey) return;
+    const touch = e.changedTouches[0];
+    const dx = touch.clientX - start.x;
+    const dy = touch.clientY - start.y;
+    if (Math.abs(dx) < 60 || Math.abs(dx) < Math.abs(dy) * 1.5) return;
+    if (dx < 0 && index < logs.length - 1) onNavigate(index + 1);
+    else if (dx > 0 && index > 0) onNavigate(index - 1);
+  };
+
   return (
-    <div className="fixed inset-0 z-[10000] overflow-y-auto bg-[#12151a]">
+    <div className="fixed inset-0 z-[10000] overflow-y-auto bg-[#12151a]" onTouchStart={handleReportTouchStart} onTouchEnd={handleReportTouchEnd}>
       <div className="mx-auto min-h-screen w-full max-w-md px-4 pb-10 pt-5 text-white">
         <div className="mb-4 flex items-center justify-between">
           <button className="icon-btn text-white" onClick={onClose}><X /></button>
