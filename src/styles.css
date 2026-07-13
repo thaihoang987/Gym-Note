@@ -1168,9 +1168,12 @@ button:disabled {
 
 /* Exercise picker wheel: sized well above .compact-wheel-picker (which was built for short
    numeric labels, not a thumbnail + exercise name) so both the GIF and the text are actually
-   legible while scrolling. */
+   legible while scrolling. Only 3 rows visible (not 5) — with as few as 1 logged exercise, 5 rows
+   of a picker this size left most of it blank; 3 rows @ a bigger optionItemHeight (see the
+   ReactWheelPicker props in ExerciseProgressPicker) keeps the same "always show a few rows of
+   context" feel without towering over the actual content when there isn't much to scroll through. */
 .exercise-wheel-picker {
-  @apply h-[300px] w-full min-w-0 max-w-full overflow-hidden rounded-lg bg-white ring-1 ring-slate-200;
+  @apply h-[252px] w-full min-w-0 max-w-full overflow-hidden rounded-lg bg-white ring-1 ring-slate-200;
 }
 
 .exercise-wheel-picker [data-rwp] {
@@ -1182,7 +1185,7 @@ button:disabled {
 }
 
 .exercise-wheel-option {
-  @apply text-sm font-bold text-slate-500;
+  @apply text-base font-bold text-slate-500;
 }
 
 .exercise-wheel-highlight-wrapper {
@@ -1190,7 +1193,7 @@ button:disabled {
 }
 
 .exercise-wheel-highlight {
-  @apply text-base font-black text-orange-800;
+  @apply text-lg font-black text-orange-800;
 }
 
 .exercise-wheel-label {

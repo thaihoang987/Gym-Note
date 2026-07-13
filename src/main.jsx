@@ -9111,7 +9111,7 @@ function ExerciseProgressPicker({ exercises, value, onChange }) {
     value: String(exercise.id),
     label: (
       <span className="exercise-wheel-label">
-        <GifThumb exercise={exercise} className="h-11 w-11" rounded="rounded-md" autoplay />
+        <GifThumb exercise={exercise} className="h-16 w-16" rounded="rounded-md" autoplay />
         <strong>{exercise.name}</strong>
       </span>
     ),
@@ -9135,8 +9135,8 @@ function ExerciseProgressPicker({ exercises, value, onChange }) {
           options={pickerOptions}
           onValueChange={changeValue}
           infinite={false}
-          visibleCount={5}
-          optionItemHeight={60}
+          visibleCount={3}
+          optionItemHeight={84}
           dragSensitivity={3}
           scrollSensitivity={5}
           classNames={{
