@@ -1518,21 +1518,25 @@ function exerciseDisplayName(exercise, settings = {}) {
   return exercise.name;
 }
 
+// Ordered so the first 3 entries (blue/green/amber) are as visually distinct from each other as
+// possible — that's the slice actually used for the activity legend below, which only ever shows
+// up to 3 names at once, so those first 3 slots matter far more than the rest of the palette.
+const DISTINCT_ACTIVITY_COLORS = [
+  { dot: '#2563eb', fill: '#dbeafe', ring: '#93c5fd' },
+  { dot: '#166534', fill: '#dcfce7', ring: '#86efac' },
+  { dot: '#ca8a04', fill: '#fef3c7', ring: '#fde68a' },
+  { dot: '#7c3aed', fill: '#ede9fe', ring: '#c4b5fd' },
+  { dot: '#be123c', fill: '#ffe4e6', ring: '#fda4af' },
+  { dot: '#0f766e', fill: '#ccfbf1', ring: '#5eead4' },
+  { dot: '#f05a28', fill: '#ffe3d3', ring: '#ffbd9a' },
+  { dot: '#334155', fill: '#e2e8f0', ring: '#cbd5e1' }
+];
+
 function stableColorForName(name) {
-  const colors = [
-    { dot: '#f05a28', fill: '#ffe3d3', ring: '#ffbd9a' },
-    { dot: '#166534', fill: '#dcfce7', ring: '#86efac' },
-    { dot: '#2563eb', fill: '#dbeafe', ring: '#93c5fd' },
-    { dot: '#7c3aed', fill: '#ede9fe', ring: '#c4b5fd' },
-    { dot: '#0f766e', fill: '#ccfbf1', ring: '#5eead4' },
-    { dot: '#be123c', fill: '#ffe4e6', ring: '#fda4af' },
-    { dot: '#ca8a04', fill: '#fef3c7', ring: '#fde68a' },
-    { dot: '#334155', fill: '#e2e8f0', ring: '#cbd5e1' }
-  ];
   const text = String(name || 'Free workout');
   let hash = 0;
   for (let i = 0; i < text.length; i += 1) hash = (hash * 31 + text.charCodeAt(i)) >>> 0;
-  return colors[hash % colors.length];
+  return DISTINCT_ACTIVITY_COLORS[hash % DISTINCT_ACTIVITY_COLORS.length];
 }
 const cmToFeetInches = (cm) => {
   const totalInches = Math.round(Number(cm || 0) / 2.54);
@@ -4068,6 +4072,24 @@ function ActivityCalendar({ calendar, history, settings }) {
   const [tip, setTip] = useState(null);
   const byDay = new Map(calendar.map((row) => [row.day, row]));
   const freeSessionName = t('history_free_session');
+  const total = calendar.reduce((sum, row) => sum + Number(row.total || 0), 0);
+  const bars = history.slice(0, 3);
+
+  // Colors for the legend/bars are assigned by order of first appearance among these (max 3)
+  // entries, not by hashing the name — a hash can put two different names in similarly-toned slots
+  // of the palette purely by chance (e.g. two different reds), which is exactly what happened with
+  // real workout-split names. Positional assignment guarantees the visible entries are always as
+  // distinct as the palette's first 3 colors. The day-grid dots below look up this same map so a
+  // given name's color stays consistent between the bars and the calendar — any other activity name
+  // that only appears on a day outside the top 3 (not shown in the legend) still falls back to the
+  // hash, since there's nothing for it to visually clash against.
+  const colorForName = new Map();
+  for (const row of bars) {
+    const name = row.routine_name || row.group_name || freeSessionName;
+    if (!colorForName.has(name)) colorForName.set(name, DISTINCT_ACTIVITY_COLORS[colorForName.size % DISTINCT_ACTIVITY_COLORS.length]);
+  }
+  const colorFor = (name) => colorForName.get(name) || stableColorForName(name);
+
   const historyByDay = new Map();
   for (const row of history) {
     const date = parseServerDate(row.completed_at);
@@ -4075,7 +4097,7 @@ function ActivityCalendar({ calendar, history, settings }) {
     const key = localIsoDate(date);
     const name = row.routine_name || row.group_name || freeSessionName;
     const list = historyByDay.get(key) || [];
-    list.push({ ...row, activityName: row.isSuperset ? `⚡ ${name}` : name, color: stableColorForName(name) });
+    list.push({ ...row, activityName: row.isSuperset ? `⚡ ${name}` : name, color: colorFor(name) });
     historyByDay.set(key, list);
   }
   const cells = [];
@@ -4090,15 +4112,13 @@ function ActivityCalendar({ calendar, history, settings }) {
     const activities = historyByDay.get(iso) || [];
     cells.push({ iso, date, data: byDay.get(iso), activities });
   }
-  const total = calendar.reduce((sum, row) => sum + Number(row.total || 0), 0);
-  const bars = history.slice(0, 3);
   const legend = [];
   const legendKeys = new Set();
   for (const row of bars) {
     const name = row.routine_name || row.group_name || freeSessionName;
     if (legendKeys.has(name)) continue;
     legendKeys.add(name);
-    legend.push({ name, color: stableColorForName(name) });
+    legend.push({ name, color: colorFor(name) });
   }
 
   return (
@@ -4141,7 +4161,7 @@ function ActivityCalendar({ calendar, history, settings }) {
             </div>
           )}
           {bars.map((row) => {
-            const color = stableColorForName(row.routine_name || row.group_name || freeSessionName);
+            const color = colorFor(row.routine_name || row.group_name || freeSessionName);
             return (
               <div key={row.id} className="flex items-center gap-2">
                 <span className="h-3 w-3 rounded-full ring-1" style={{ backgroundColor: color.dot, borderColor: color.ring }} />
