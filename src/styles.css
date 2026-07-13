@@ -166,32 +166,6 @@ button:disabled {
   @apply grid h-16 w-16 place-items-center overflow-hidden rounded-full bg-emerald-500 text-lg font-black text-green-950 ring-2 ring-white shadow-soft;
 }
 
-.exercise-picker {
-  @apply relative mb-3;
-}
-
-.exercise-picker-button,
-.exercise-picker-option {
-  @apply flex w-full items-center gap-3 rounded-lg bg-white p-2 text-left text-sm font-bold ring-1 ring-slate-200;
-}
-
-.exercise-picker-button img,
-.exercise-picker-option img {
-  @apply h-10 w-10 shrink-0 rounded-md bg-slate-50 object-contain;
-}
-
-.exercise-picker-menu {
-  @apply absolute inset-x-0 top-full z-30 mt-2 max-h-72 overflow-y-auto rounded-lg border border-slate-200 bg-white p-2 shadow-soft;
-}
-
-.exercise-picker-option {
-  @apply mb-1 ring-transparent;
-}
-
-.exercise-picker-option.active {
-  @apply bg-orange-100 text-orange-950;
-}
-
 .builder-section {
   @apply rounded-xl border border-stone-200 bg-[#fffdf7] p-4 text-slate-950 shadow-soft;
 }

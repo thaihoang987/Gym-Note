@@ -1563,18 +1563,19 @@ const localeOptions = [
   ['fr-FR', 'Français'],
   ['ru-RU', 'Русский'],
 ];
-const rangeOptionsDays = { '3d': 3, '7d': 7, '14d': 14, '1m': 30, '3m': 90, '6m': 183, '1y': 365, '2y': 730, '5y': 1825, 'all': null };
-const getRangeOptions = (t) => [
-  ['3d', t('range_3d'), 3],
-  ['7d', t('range_7d'), 7],
-  ['14d', t('range_14d'), 14],
-  ['1m', t('range_1m'), 30],
-  ['3m', t('range_3m'), 90],
-  ['6m', t('range_6m'), 183],
-  ['1y', t('range_1y'), 365],
-  ['2y', t('range_2y'), 730],
-  ['5y', t('range_5y'), 1825],
-  ['all', t('range_all'), null]
+// Short, language-neutral chart range codes (3D/7D/1M/...) instead of full localized words like
+// "3 days"/"3 ngày" — with 8 buttons in a row, spelled-out labels wrapped awkwardly, so these stay
+// as plain abbreviations in every locale rather than going through `t()`.
+const rangeOptionsDays = { '3d': 3, '7d': 7, '1m': 30, '3m': 90, '6m': 183, '1y': 365, '3y': 1095, 'all': null };
+const getRangeOptions = () => [
+  ['3d', '3D', 3],
+  ['7d', '7D', 7],
+  ['1m', '1M', 30],
+  ['3m', '3M', 90],
+  ['6m', '6M', 183],
+  ['1y', '1Y', 365],
+  ['3y', '3Y', 1095],
+  ['all', 'All', null]
 ];
 
 function supportedTimezones() {
@@ -3478,7 +3479,9 @@ function BodyCompositionScanModal({ userId, onClose, onSaved }) {
   };
 
   const pickFiles = async (e) => {
-    const picked = [...(e.target.files || [])].slice(0, 3);
+    // Each image is OCR'd and confirmed one at a time (see `processFile`/`advance` below), so
+    // there's no batch cost to raising this — just how many confirm-and-save steps the user does.
+    const picked = [...(e.target.files || [])].slice(0, 10);
     if (!picked.length) return;
     setFiles(picked);
     setFileIndex(0);
@@ -8194,7 +8197,11 @@ function BodyCompositionDetailPopup({ metricDef, latestRow, delta, boundaries, l
 
   // History chart is opt-in via the `logs` prop — every call site now passes it, but this keeps
   // the popup usable standalone (e.g. a future caller with only a single reading) without crashing.
-  const trendRows = logs ? bodyCompTrendRows(logs, metricDef, settings) : [];
+  // Memoized (not recomputed inline) because the popup's parent (Dashboard) re-renders every
+  // second for its own clock display — without this, a fresh `trendRows` array on every tick would
+  // change `trendChartOption`'s identity below and force EChart's notMerge `setOption` call, wiping
+  // out any zoom/pan the user just did on the chart.
+  const trendRows = useMemo(() => (logs ? bodyCompTrendRows(logs, metricDef, settings) : []), [logs, metricDef, settings]);
   const tickDateFormat = (v) => formatDate(v, settings, { day: '2-digit', month: '2-digit' });
   const trendChartOption = useMemo(() => ({
     grid: { top: 12, right: 12, bottom: 28, left: 40 },
@@ -8643,11 +8650,11 @@ function BodyCompositionReportPage({ userId, settings, logs, index, onNavigate, 
 function BodyCompositionSection({ userId, settings }) {
   const t = useLang();
   const lang = settings?.locale?.split('-')[0] || 'en';
-  const rangeOptions = getRangeOptions(t);
+  const rangeOptions = getRangeOptions();
   const [logs, setLogs] = useState([]);
   const [ranges, setRanges] = useState({});
   const [metricKey, setMetricKey] = useState('weight');
-  const [rangeKey, setRangeKey] = useState('30d');
+  const [rangeKey, setRangeKey] = useState('1m');
   const [detailOpen, setDetailOpen] = useState(false);
 
   useEffect(() => {
@@ -8656,7 +8663,11 @@ function BodyCompositionSection({ userId, settings }) {
   }, [userId]);
 
   const metricDef = BODY_COMPOSITION_METRIC_DEFS.find((def) => def.key === metricKey) || BODY_COMPOSITION_METRIC_DEFS[0];
-  const rows = logs
+  // Memoized so opening the detail popup (which toggles `detailOpen` and re-renders this
+  // component) doesn't produce a new `rows` array purely from re-rendering — that would change
+  // `chartOption`'s identity below and force EChart's notMerge `setOption`, resetting any zoom/pan
+  // the user had on the main chart even though the underlying data didn't change.
+  const rows = useMemo(() => logs
     .filter((row) => row[metricDef.valueField] !== null && row[metricDef.valueField] !== undefined)
     .map((row) => ({
       logged_at: row.logged_at,
@@ -8664,7 +8675,7 @@ function BodyCompositionSection({ userId, settings }) {
       label: formatDate(row.logged_at, settings, { day: '2-digit', month: '2-digit' }),
       value: row[metricDef.valueField],
       grade: metricDef.gradeField ? row[metricDef.gradeField] : null
-    }));
+    })), [logs, metricDef, settings]);
   const chartDomain = chartRangeDomain(rangeKey);
   const latestRow = rows[rows.length - 1] || null;
   const delta = rows.length ? bodyCompositionDelta(rows, rows.length - 1) : null;
@@ -8723,11 +8734,15 @@ function BodyCompositionSection({ userId, settings }) {
     <div className="panel">
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <h3 className="font-bold">{t('bodycomp_section_title')}</h3>
-        <select className="input compact-input" value={metricKey} onChange={(e) => setMetricKey(e.target.value)}>
-          {BODY_COMPOSITION_METRIC_DEFS.map((def) => (
-            <option key={def.key} value={def.key}>{t(def.labelKey)}</option>
-          ))}
-        </select>
+        <div className="w-44">
+          <WheelPicker
+            dense
+            value={metricKey}
+            options={BODY_COMPOSITION_METRIC_DEFS.map((def) => def.key)}
+            formatLabel={(key) => t(BODY_COMPOSITION_METRIC_DEFS.find((def) => def.key === key)?.labelKey)}
+            onChange={setMetricKey}
+          />
+        </div>
       </div>
       <div className="range-bar mb-3">
         {rangeOptions.map(([key, label]) => (
@@ -8773,7 +8788,7 @@ function BodyCompositionSection({ userId, settings }) {
 
 function Analytics({ userId, settings }) {
   const t = useLang();
-  const rangeOptions = getRangeOptions(t);
+  const rangeOptions = getRangeOptions();
   const [analytics, setAnalytics] = useState({ exercises: [], exerciseRows: [], routines: [], sessionRows: [] });
   const [weights, setWeights] = useState([]);
   const [chartMode, setChartMode] = useState('exercise');
@@ -9038,47 +9053,21 @@ function Analytics({ userId, settings }) {
   );
 }
 
+// Scroll-to-pick wheel instead of a tap-to-open search dropdown — `exercises` here is only the
+// (usually short) set already logged with progress data, not the full exercise library, so a
+// search box isn't needed to keep the list scannable.
 function ExerciseProgressPicker({ exercises, value, onChange }) {
   const t = useLang();
-  const [open, setOpen] = useState(false);
-  const [search, setSearch] = useState('');
-  const selected = exercises.find((exercise) => exercise.id === value);
-  const filtered = search.trim()
-    ? exercises.filter((e) => e.name.toLowerCase().includes(search.trim().toLowerCase()))
-    : exercises;
+  if (!exercises.length) return <p className="mb-3 text-sm text-slate-400">{t('analytics_no_exercises')}</p>;
   return (
-    <div className="exercise-picker">
-      <button type="button" className="exercise-picker-button" onClick={() => { setOpen((v) => !v); setSearch(''); }}>
-        {exerciseAutoMediaUrl(selected) && <img src={exerciseAutoMediaUrl(selected)} alt="" />}
-        <span>{selected?.name || t('analytics_select_exercise')}</span>
-      </button>
-      {open && (
-        <div className="exercise-picker-menu">
-          <input
-            className="input mb-2 py-2 text-sm"
-            placeholder="Search..."
-            autoFocus
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
-          {filtered.map((exercise) => (
-            <button
-              type="button"
-              key={exercise.id}
-              className={`exercise-picker-option ${exercise.id === value ? 'active' : ''}`}
-              onClick={() => {
-                onChange(exercise.id);
-                setOpen(false);
-                setSearch('');
-              }}
-            >
-              {exerciseAutoMediaUrl(exercise) && <img src={exerciseAutoMediaUrl(exercise)} alt="" />}
-              <span>{exercise.name}</span>
-            </button>
-          ))}
-          {filtered.length === 0 && <p className="p-2 text-sm text-slate-400">No results</p>}
-        </div>
-      )}
+    <div className="mb-3">
+      <WheelPicker
+        dense
+        value={value || exercises[0].id}
+        options={exercises.map((exercise) => exercise.id)}
+        formatLabel={(id) => exercises.find((exercise) => exercise.id === id)?.name || id}
+        onChange={onChange}
+      />
     </div>
   );
 }

@@ -20,7 +20,7 @@
     bw_delete: 'Delete entry', bw_confirm_delete: 'Delete this weight entry? This cannot be undone.',
     // body composition (Xiaomi scale scan)
     bodycomp_scan_title: 'Scan body composition report', bodycomp_scan_hint: 'Take a photo of your Xiaomi scale report and the app will read the values for you.',
-    bodycomp_scan_multi_hint: 'You can pick up to 3 photos at once (e.g. catching up on several weigh-ins) — each one gets its own check-before-saving step.',
+    bodycomp_scan_multi_hint: 'You can pick up to 10 photos at once (e.g. catching up on several weigh-ins) — each one gets its own check-before-saving step.',
     bodycomp_scan_processing_n: (index, total) => `Reading photo ${index} of ${total}...`,
     bodycomp_scan_image_n: (index, total) => `Photo ${index} of ${total}`,
     bodycomp_scan_skip: 'Skip this photo', bodycomp_scan_save_next: 'Save & next',
@@ -384,7 +384,7 @@
     bw_label: 'Cân nặng', bw_date: 'Ngày tháng', bw_weight: 'Cân nặng', bw_no_history: 'Chưa có lịch sử.', bw_edit: 'Bấm để sửa',
     bw_delete: 'Xoá mục này', bw_confirm_delete: 'Xoá mục cân nặng này? Không thể hoàn tác.',
     bodycomp_scan_title: 'Scan báo cáo thành phần cơ thể', bodycomp_scan_hint: 'Chụp ảnh báo cáo từ cân Xiaomi, app sẽ tự đọc số liệu giúp bạn.',
-    bodycomp_scan_multi_hint: 'Bạn có thể chọn tối đa 3 ảnh cùng lúc (vd bù nhiều lần cân) — mỗi ảnh vẫn có bước kiểm tra trước khi lưu riêng.',
+    bodycomp_scan_multi_hint: 'Bạn có thể chọn tối đa 10 ảnh cùng lúc (vd bù nhiều lần cân) — mỗi ảnh vẫn có bước kiểm tra trước khi lưu riêng.',
     bodycomp_scan_processing_n: (index, total) => `Đang đọc ảnh ${index}/${total}...`,
     bodycomp_scan_image_n: (index, total) => `Ảnh ${index}/${total}`,
     bodycomp_scan_skip: 'Bỏ qua ảnh này', bodycomp_scan_save_next: 'Lưu & tiếp theo',
