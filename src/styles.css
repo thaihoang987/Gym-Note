@@ -1182,12 +1182,15 @@ button:disabled {
    proper depth ("84px") at visibleCount=8 — reproduced consistently at narrow/mobile viewport
    widths, which is also why an earlier fix attempt (also using an unsafe visibleCount) verified as
    working in one browser/viewport but was still broken for the user reporting it in another.
-   Container height (336px here) is independent of visibleCount — it's how much of the ring this
-   element's own height/overflow exposes, unrelated to the depth math above. With only one exercise
-   there's nothing to pick between, so that case skips the wheel for a plain `.exercise-wheel-single`
-   static row instead of a picker with permanently-blank slots. */
+   Container height is independent of visibleCount — it's how much of the ring this element's own
+   height/overflow exposes, unrelated to the depth math above. At visibleCount=8, the library only
+   ever shows the front half of the ring (the 3 rows within +/-90deg of center: previous/selected/
+   next — the rest face away and stay hidden), so a taller container just adds blank space below
+   those 3 rows rather than revealing more of them; height is set to 3 x optionItemHeight (84px) to
+   match exactly. With only one exercise there's nothing to pick between, so that case skips the
+   wheel for a plain `.exercise-wheel-single` static row instead of a picker with blank slots. */
 .exercise-wheel-picker {
-  @apply h-[336px] w-full min-w-0 max-w-full overflow-hidden rounded-lg bg-white ring-1 ring-slate-200;
+  @apply h-[252px] w-full min-w-0 max-w-full overflow-hidden rounded-lg bg-white ring-1 ring-slate-200;
 }
 
 .exercise-wheel-picker [data-rwp] {
@@ -1230,11 +1233,13 @@ button:disabled {
    .exercise-wheel-picker, full width instead of squeezed into a corner box next to the section
    title, so longer labels like "Bone mineral percentage" are actually readable. Also uses
    visibleCount=8 in BodyCompositionSection for the same reason .exercise-wheel-picker does — see
-   the long comment there about visibleCount=4 hitting a tan(90deg) singularity. There are always
-   all 13 BODY_COMPOSITION_METRIC_DEFS to pick from, so unlike the exercise wheel this never needs
-   a single-item fallback. */
+   the long comment there about visibleCount=4 hitting a tan(90deg) singularity, and about height
+   only ever needing to fit the 3 front-facing rows (previous/selected/next) regardless of
+   visibleCount — height here is 3 x optionItemHeight (56px). There are always all 13
+   BODY_COMPOSITION_METRIC_DEFS to pick from, so unlike the exercise wheel this never needs a
+   single-item fallback. */
 .metric-wheel-picker {
-  @apply h-[224px] w-full min-w-0 max-w-full overflow-hidden rounded-lg bg-white ring-1 ring-slate-200;
+  @apply h-[168px] w-full min-w-0 max-w-full overflow-hidden rounded-lg bg-white ring-1 ring-slate-200;
 }
 
 .metric-wheel-picker [data-rwp] {
