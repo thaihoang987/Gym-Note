@@ -8565,7 +8565,7 @@ function BodyCompositionReportPage({ userId, settings, logs, index, onNavigate, 
               <ChevronRight className="rotate-180" size={18} />
             </button>
           )}
-          <div className="text-center">
+          <button type="button" className="text-center" onClick={() => openPopup('weight')}>
             <p className="text-xs text-slate-400">{formatDateTime(row.logged_at, settings)}</p>
             <div className="flex items-baseline justify-center gap-1">
               <strong className="text-5xl">{row.weight_kg ?? '--'}</strong>
@@ -8575,7 +8575,7 @@ function BodyCompositionReportPage({ userId, settings, logs, index, onNavigate, 
               {row.weight_grade && <span className="mr-1 font-bold" style={{ color: GRADE_TIER_COLORS[gradeColorTier(row.weight_grade)] || '#94a3b8' }}>{row.weight_grade}</span>}
               {daysAgo !== null && weightDelta !== null && (weightDelta === 0 ? t('bodycomp_no_change', daysAgo) : t('bodycomp_report_delta', Math.abs(weightDelta), 'kg', daysAgo, weightDelta > 0))}
             </p>
-          </div>
+          </button>
           {onNavigate && (
             <button className="icon-btn text-white disabled:opacity-30" disabled={index >= logs.length - 1} onClick={() => onNavigate(index + 1)}>
               <ChevronRight size={18} />
