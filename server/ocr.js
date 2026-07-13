@@ -13,8 +13,8 @@ export { parseBodyCompositionLines } from './ocr/parseLines.js';
 // per line that Python already filters low-confidence noise out with — eliminating the whole class
 // of delta-arrow/glued-letter noise-filtering heuristics the Tesseract pipeline needed.
 export async function ocrBodyCompositionImage(imagePath) {
-  const lines = await runPaddleOcr(imagePath);
-  const fields = parseBodyCompositionLines(lines);
+  const { lines, bodyTypeZone } = await runPaddleOcr(imagePath);
+  const fields = parseBodyCompositionLines(lines, bodyTypeZone);
   const rawText = lines
     .slice()
     .sort((a, b) => a.y0 - b.y0 || a.x0 - b.x0)

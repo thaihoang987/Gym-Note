@@ -38,6 +38,65 @@ _ocr = PaddleOCR(
 # every caller.
 CONF_THRESHOLD = 0.5
 
+# The body-type quadrant chart's selected cell is shown only by a solid background-color fill (no
+# distinguishing text — every cell prints its own zone name regardless of whether it's selected),
+# which text OCR can never read. But the color itself IS reliably readable by direct pixel
+# sampling: cropping/sampling coordinates below were measured against real report screenshots and
+# verified to land inside the right cell on every one of 13 real samples (2 different people, two
+# different Body Fat axis scales — see shared/bodyCompositionMetrics.js for why that axis varies).
+# Coordinates are fixed pixel offsets in the ORIGINAL (unscaled) image, matching this file's
+# existing body_score/weight_kg fallback crops, which rely on the same verified fact: this app's
+# report screenshots are pixel-identical in layout across every real sample collected (flat digital
+# exports, never a photo of a physical document).
+# Each entry is (x1, y1, x2, y2) of the cell's full rectangle; the sample point used is inset from
+# the top-left corner (x1+15, y1+15) to land on the solid fill, away from both the grid border and
+# the always-centered zone-name text (whose anti-aliased pixels are grayscale too, so even a
+# sample point that drifted onto stray text would still correctly read as "not colored").
+BODY_TYPE_ZONE_RECTS = {
+    'Athletic': (192, 4601, 710, 4837),
+    'Overweight_row1': (718, 4601, 939, 4837),
+    'Obese': (947, 4601, 1169, 4837),
+    'Muscular': (192, 4845, 710, 5082),
+    'Fit': (718, 4845, 939, 5326),
+    'Overweight_row2': (947, 4845, 1169, 5082),
+    'Slim & muscular': (192, 5089, 481, 5326),
+    'Slim': (488, 5089, 710, 5326),
+    'Invisibly obese': (947, 5089, 1169, 5570),
+    'Lean': (192, 5334, 481, 5570),
+    'Underweight': (488, 5334, 939, 5570),
+}
+# Both grid cells print the same "Overweight" label (one for high-BMI/mid-fat, one for
+# normal-BMI/high-fat) — collapse the two internal rect keys back to that one canonical zone name,
+# matching BODY_TYPE_ZONES in shared/bodyCompositionMetrics.js.
+BODY_TYPE_ZONE_NAMES = {key: ('Overweight' if key.startswith('Overweight') else key) for key in BODY_TYPE_ZONE_RECTS}
+
+
+def _is_grayscale(rgb, tolerance=6):
+    r, g, b = rgb
+    return abs(r - g) <= tolerance and abs(g - b) <= tolerance and abs(r - b) <= tolerance
+
+
+def detect_body_type_zone(image_path):
+    from PIL import Image
+
+    try:
+        img = Image.open(image_path)
+        if img.width != 1320:
+            return None  # coordinates were measured against this exact report width; don't guess on a different layout
+        img = img.convert('RGB')
+        active = []
+        for key, (x1, y1, _x2, _y2) in BODY_TYPE_ZONE_RECTS.items():
+            color = img.getpixel((x1 + 15, y1 + 15))
+            if not _is_grayscale(color):
+                active.append(BODY_TYPE_ZONE_NAMES[key])
+        # Exactly one active cell is the expected, trustworthy case. Zero means the chart wasn't
+        # where these coordinates expect it (a report layout variant); more than one means a sample
+        # point drifted onto something unexpected. Either way, returning None here just falls back
+        # to the existing BMI/body-fat formula guess in classifyBodyType — never a wrong answer.
+        return active[0] if len(active) == 1 else None
+    except Exception:
+        return None
+
 
 def run_ocr(image_path):
     from PIL import Image
@@ -142,7 +201,7 @@ def run_ocr(image_path):
         except Exception:
             pass  # If fallback crop fails, continue with existing lines
 
-    return lines
+    return lines, detect_body_type_zone(image_path)
 
 
 def main():
@@ -154,8 +213,8 @@ def main():
         req_id = request.get('id')
         image_path = request.get('path')
         try:
-            lines = run_ocr(image_path)
-            response = {'id': req_id, 'lines': lines}
+            lines, body_type_zone = run_ocr(image_path)
+            response = {'id': req_id, 'lines': lines, 'bodyTypeZone': body_type_zone}
         except Exception as exc:  # noqa: BLE001 - report every failure back to the caller, never crash the worker
             response = {'id': req_id, 'error': str(exc)}
         sys.stdout.write(json.dumps(response) + '\n')

@@ -61,7 +61,7 @@ function spawnWorker() {
     pending.delete(response.id);
     clearTimeout(entry.timer);
     if (response.error) entry.reject(new Error(response.error));
-    else entry.resolve(response.lines);
+    else entry.resolve({ lines: response.lines, bodyTypeZone: response.bodyTypeZone ?? null });
   });
   // Model-loading progress/warnings go here too, which is why only the tail is kept — but on a
   // crash (missing paddleocr install, oneDNN incompatibility, etc.) this tail is the only place the
@@ -94,11 +94,14 @@ function getWorker() {
   return worker;
 }
 
-// Runs PaddleOCR against `imagePath` via the persistent Python worker, returning the recognized
-// text lines with position and confidence. Spawns the worker lazily on first call and reuses it
-// for every later scan — restarting a fresh Python process (and reloading the model) per request
-// would repay the ~6s import+construct cost every time, on top of the ~15s inference floor that's
-// already the dominant cost.
+// Runs PaddleOCR against `imagePath` via the persistent Python worker, returning `{ lines,
+// bodyTypeZone }`: the recognized text lines with position and confidence, plus the body-type
+// quadrant chart's selected zone (or null) — read directly from the image's pixel colors rather
+// than OCR'd as text, since the selected cell is shown only by a background fill color (see
+// `detect_body_type_zone` in paddleWorker.py). Spawns the worker lazily on first call and reuses
+// it for every later scan — restarting a fresh Python process (and reloading the model) per
+// request would repay the ~6s import+construct cost every time, on top of the ~15s inference floor
+// that's already the dominant cost.
 export function runPaddleOcr(imagePath) {
   return new Promise((resolve, reject) => {
     const child = getWorker();

@@ -1,4 +1,4 @@
-import { classifyBodyType } from '../../shared/bodyCompositionMetrics.js';
+import { BODY_TYPE_ZONES, classifyBodyType } from '../../shared/bodyCompositionMetrics.js';
 
 // Xiaomi Mi Body Composition Scale screenshots use a comma as the decimal separator ("64,2",
 // "-2,6") because the phone's locale is Vietnamese.
@@ -248,7 +248,7 @@ function numberAfterLabel(lines, label, { signed = false } = {}) {
   return signed ? value : (value === null ? null : Math.abs(value));
 }
 
-export function parseBodyCompositionLines(rawLines) {
+export function parseBodyCompositionLines(rawLines, detectedBodyTypeZone = null) {
   const result = {};
   const derivedFields = new Set();
   const uncertainFields = new Set();
@@ -336,12 +336,19 @@ export function parseBodyCompositionLines(rawLines) {
   result.fat_free_weight_kg = fatFreeWeight.value;
   result.heart_rate_bpm = heartRate.value; result.heart_rate_grade = heartRate.grade;
 
-  // The highlighted body-type cell is shown by background color, not distinct text, so OCR can't
-  // tell which of the 10 zone labels is actually lit up — pre-fill a best-effort guess from BMI +
-  // body fat percent instead (see classifyBodyType); the confirm form's picker still lets the user
-  // correct it by eye.
-  result.body_type_zone = classifyBodyType(result.bmi, result.body_fat_percent, result.body_fat_grade);
-  if (result.body_type_zone !== null) derivedFields.add('body_type_zone');
+  // The highlighted body-type cell is shown by background color, not distinct text, so text OCR
+  // can't read it directly — but `detectedBodyTypeZone` (from paddleWorker.py's
+  // `detect_body_type_zone`) reads that color straight from the image's pixels, which is ground
+  // truth, not a guess, so it's used as-is with no "derived/uncertain" flag. Only fall back to the
+  // BMI + body-fat-grade guess (see classifyBodyType) when pixel detection didn't return a clean
+  // single answer (e.g. a report layout this app hasn't been calibrated against) — the confirm
+  // form's picker still lets the user correct either case by eye.
+  if (detectedBodyTypeZone && BODY_TYPE_ZONES.includes(detectedBodyTypeZone)) {
+    result.body_type_zone = detectedBodyTypeZone;
+  } else {
+    result.body_type_zone = classifyBodyType(result.bmi, result.body_fat_percent, result.body_fat_grade);
+    if (result.body_type_zone !== null) derivedFields.add('body_type_zone');
+  }
 
   result.standard_weight_kg = standardWeightRaw;
   result.weight_control_kg = weightControlRaw;
