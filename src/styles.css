@@ -1184,13 +1184,21 @@ button:disabled {
    working in one browser/viewport but was still broken for the user reporting it in another.
    Container height is independent of visibleCount — it's how much of the ring this element's own
    height/overflow exposes, unrelated to the depth math above. At visibleCount=8, the library only
-   ever shows the front half of the ring (the 3 rows within +/-90deg of center: previous/selected/
-   next — the rest face away and stay hidden), so a taller container just adds blank space below
-   those 3 rows rather than revealing more of them; height is set to 3 x optionItemHeight (84px) to
-   match exactly. With only one exercise there's nothing to pick between, so that case skips the
-   wheel for a plain `.exercise-wheel-single` static row instead of a picker with blank slots. */
+   ever shows the front half of the ring (up to 3 rows within +/-90deg of center: previous/
+   selected/next — the rest face away and stay hidden). A 3-row-tall container still leaves a
+   blank row whenever the selection has nothing on one side (the very first or last option — which
+   for BodyCompositionSection's metric wheel is also the *default* selection, "Weight"), so this
+   targets 2 rows instead: enough to always show the selected row plus at least one neighbor with
+   zero blank space in every position, at the cost of only ever peeking one side (not both) when
+   the selection is in the middle of the list. Height is 2.25 x optionItemHeight (84px), not a flat
+   2x — the 3D rotation foreshortens each peeking row (measured via getBoundingClientRect: a
+   supposedly-56px-tall neighbor row actually renders ~40px tall, offset so its bottom edge lands
+   past a plain 2x boundary), so 2x clips the second row's bottom few pixels; 2.25x was the smallest
+   value that measured as fully unclipped. With only one exercise there's nothing to pick between,
+   so that case skips the wheel for a plain `.exercise-wheel-single` static
+   row instead of a picker with blank slots. */
 .exercise-wheel-picker {
-  @apply h-[252px] w-full min-w-0 max-w-full overflow-hidden rounded-lg bg-white ring-1 ring-slate-200;
+  @apply h-[192px] w-full min-w-0 max-w-full overflow-hidden rounded-lg bg-white ring-1 ring-slate-200;
 }
 
 .exercise-wheel-picker [data-rwp] {
@@ -1234,12 +1242,14 @@ button:disabled {
    title, so longer labels like "Bone mineral percentage" are actually readable. Also uses
    visibleCount=8 in BodyCompositionSection for the same reason .exercise-wheel-picker does — see
    the long comment there about visibleCount=4 hitting a tan(90deg) singularity, and about height
-   only ever needing to fit the 3 front-facing rows (previous/selected/next) regardless of
-   visibleCount — height here is 3 x optionItemHeight (56px). There are always all 13
-   BODY_COMPOSITION_METRIC_DEFS to pick from, so unlike the exercise wheel this never needs a
-   single-item fallback. */
+   targeting 2 rows (not 3) so there's zero blank space at either end of the list — "Weight", the
+   first metric, is also this picker's default selection, so the boundary case is the common case,
+   not an edge case — at 2.25 x optionItemHeight (56px), not a flat 2x, to fully fit the second
+   row's foreshortened height (see the longer explanation on .exercise-wheel-picker). There are
+   always all 13 BODY_COMPOSITION_METRIC_DEFS to pick from, so unlike the exercise wheel this never
+   needs a single-item fallback. */
 .metric-wheel-picker {
-  @apply h-[168px] w-full min-w-0 max-w-full overflow-hidden rounded-lg bg-white ring-1 ring-slate-200;
+  @apply h-[128px] w-full min-w-0 max-w-full overflow-hidden rounded-lg bg-white ring-1 ring-slate-200;
 }
 
 .metric-wheel-picker [data-rwp] {
