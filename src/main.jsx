@@ -3333,6 +3333,7 @@ function BodyCompositionScanModal({ userId, onClose, onSaved }) {
   const [fields, setFields] = useState({});
   const [loggedAt, setLoggedAt] = useState(() => toDatetimeLocalValue(null));
   const [rawText, setRawText] = useState('');
+  const [massRegionText, setMassRegionText] = useState('');
   const [showRaw, setShowRaw] = useState(false);
   const [error, setError] = useState('');
 
@@ -3350,6 +3351,7 @@ function BodyCompositionScanModal({ userId, onClose, onSaved }) {
       setFields(result.fields);
       setLoggedAt(toDatetimeLocalValue(result.fields?.logged_at));
       setRawText(result.rawText || '');
+      setMassRegionText(result.massRegionText || '');
       setStep('confirm');
     } catch (err) {
       const timedOut = err.name === 'AbortError' || /aborted/i.test(err.message || '');
@@ -3441,6 +3443,12 @@ function BodyCompositionScanModal({ userId, onClose, onSaved }) {
               <details className="rounded-lg border border-slate-200 p-2" open={showRaw} onToggle={(e) => setShowRaw(e.target.open)}>
                 <summary className="cursor-pointer text-xs font-semibold text-slate-500">{t('bodycomp_scan_raw_text')}</summary>
                 <pre className="mt-2 max-h-40 overflow-y-auto whitespace-pre-wrap text-[10px] text-slate-500">{rawText}</pre>
+              </details>
+            )}
+            {massRegionText && (
+              <details className="rounded-lg border border-slate-200 p-2">
+                <summary className="cursor-pointer text-xs font-semibold text-slate-500">{t('bodycomp_scan_mass_region_text')}</summary>
+                <pre className="mt-2 max-h-40 overflow-y-auto whitespace-pre-wrap text-[10px] text-slate-500">{massRegionText}</pre>
               </details>
             )}
             <div className="flex gap-2 pt-2">

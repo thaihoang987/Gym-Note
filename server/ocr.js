@@ -46,9 +46,20 @@ function findLabel(text, label, fromIndex = 0) {
 // makes it look like normal light-mode text, which measurably improves recognition. Greyscale
 // strips the color tinting on grade badges/section headers that otherwise confuses character
 // segmentation; normalize spreads the contrast range; sharpen crisps up small card-label text.
-async function preprocessForOcr(imagePath) {
+//
+// `region`, when given, is `(fullWidth, fullHeight) => {left, top, width, height}` in pixels —
+// used to isolate one section of the report (see COMPOSITION_MASS_REGION) instead of OCR'ing the
+// whole image. The crop is upscaled 2x first: it's inherently small text, and Tesseract reads
+// small text more reliably at higher effective resolution.
+async function preprocessForOcr(imagePath, region = null) {
   const outPath = path.join(os.tmpdir(), `bodycomp-ocr-${Date.now()}-${Math.round(Math.random() * 1e6)}.png`);
-  await sharp(imagePath)
+  let image = sharp(imagePath);
+  if (region) {
+    const meta = await image.metadata();
+    const box = region(meta.width, meta.height);
+    image = image.extract(box).resize({ width: box.width * 2 });
+  }
+  await image
     .negate({ alpha: false })
     .greyscale()
     .normalize()
@@ -385,29 +396,78 @@ export function parseBodyCompositionText(text) {
     }
   }
 
-  // The composition-mass cards (body water/fat/bone mineral/protein mass, in kg) sit right next
-  // to the body silhouette graphic in small text that Tesseract frequently drops entirely — but
-  // every one of them is the *same number* as its percentage counterpart further down the report
-  // (which OCRs far more reliably, in plain card text away from the graphic), just expressed as a
-  // fraction of body weight instead of a raw percentage. Only fills in what OCR actually missed;
-  // an already-read mass value is trusted as-is rather than second-guessed against this estimate.
-  if (result.weight_kg !== null) {
-    const massFromPercent = (percent) => (percent === null ? null : Number((result.weight_kg * percent / 100).toFixed(1)));
-    if (result.body_water_mass_kg === null) result.body_water_mass_kg = massFromPercent(result.body_water_percent);
-    if (result.fat_mass_kg === null) result.fat_mass_kg = massFromPercent(result.body_fat_percent);
-    if (result.bone_mineral_mass_kg === null) result.bone_mineral_mass_kg = massFromPercent(result.bone_mineral_percent);
-    if (result.protein_mass_kg === null) result.protein_mass_kg = massFromPercent(result.protein_percent);
-  }
-
   return result;
 }
 
+// The composition-mass cards (body water/fat/bone mineral/protein mass, in kg) sit next to a body
+// silhouette graphic in small text that Tesseract frequently drops entirely — even the focused
+// region crop (see COMPOSITION_MASS_REGION) can still come up short on a low-quality photo. As a
+// last resort — only once both direct-reading attempts have failed a given field — fall back to
+// computing it: every mass value is the *same number* as its percentage counterpart further down
+// the report (which OCRs far more reliably, in plain card text away from the graphic), just
+// expressed as a fraction of body weight instead of a raw percentage. An already-read mass value
+// (from either OCR pass) is trusted as-is and never second-guessed against this estimate.
+function fillMissingMassFromPercent(result) {
+  if (result.weight_kg === null) return;
+  const massFromPercent = (percent) => (percent === null ? null : Number((result.weight_kg * percent / 100).toFixed(1)));
+  if (result.body_water_mass_kg === null) result.body_water_mass_kg = massFromPercent(result.body_water_percent);
+  if (result.fat_mass_kg === null) result.fat_mass_kg = massFromPercent(result.body_fat_percent);
+  if (result.bone_mineral_mass_kg === null) result.bone_mineral_mass_kg = massFromPercent(result.bone_mineral_percent);
+  if (result.protein_mass_kg === null) result.protein_mass_kg = massFromPercent(result.protein_percent);
+}
+
+// Estimated from the report screenshots collected so far, as fractions of the full image so it
+// isn't tied to one specific screen resolution: the composition-mass block sits in the upper
+// third of the report, to the RIGHT of the body-silhouette graphic. Cropping the graphic out and
+// re-OCRing just this text column — upscaled 2x, since it's naturally small text — is a focused
+// second pass that avoids the segmentation confusion a graphic-plus-small-text region causes in
+// the full-page pass. These fractions are a best estimate, not measured pixel coordinates, so the
+// crop's own raw OCR text is returned alongside the main result specifically so it can be
+// recalibrated against real scans if the estimate turns out to be off.
+const COMPOSITION_MASS_REGION = (width, height) => ({
+  left: Math.round(width * 0.42),
+  top: Math.round(height * 0.30),
+  width: Math.round(width * 0.58),
+  height: Math.round(height * 0.15)
+});
+
+function parseCompositionMassRegion(text) {
+  const parser = new ReportParser(text);
+  const result = {};
+  ({ value: result.body_water_mass_kg } = parser.single('body_water_mass_kg', 'Body water mass', { hasGrade: false }));
+  ({ value: result.fat_mass_kg } = parser.single('fat_mass_kg', 'Fat mass', { hasGrade: false }));
+  ({ value: result.bone_mineral_mass_kg } = parser.single('bone_mineral_mass_kg', 'Bone mineral mass', { hasGrade: false }));
+  ({ value: result.protein_mass_kg } = parser.single('protein_mass_kg', 'Protein mass', { hasGrade: false }));
+  return result;
+}
+
+const COMPOSITION_MASS_KEYS = ['body_water_mass_kg', 'fat_mass_kg', 'bone_mineral_mass_kg', 'protein_mass_kg'];
+
 export async function ocrBodyCompositionImage(imagePath) {
   const processedPath = await preprocessForOcr(imagePath);
+  let massRegionPath = null;
   try {
     const text = await tesseract.recognize(processedPath, { lang: 'eng', oem: 1, psm: 3 });
-    return { fields: parseBodyCompositionText(text), rawText: text };
+    const fields = parseBodyCompositionText(text);
+
+    let massRegionText = '';
+    if (COMPOSITION_MASS_KEYS.some((key) => fields[key] === null)) {
+      massRegionPath = await preprocessForOcr(imagePath, COMPOSITION_MASS_REGION);
+      // psm 6 ("assume a single uniform block of text") suits this crop better than the full
+      // report's psm 3 — it's now just a plain stacked column of value/label pairs, no multi-card
+      // grid to segment.
+      massRegionText = await tesseract.recognize(massRegionPath, { lang: 'eng', oem: 1, psm: 6 });
+      const regionFields = parseCompositionMassRegion(massRegionText);
+      for (const key of COMPOSITION_MASS_KEYS) {
+        if (fields[key] === null && regionFields[key] !== null) fields[key] = regionFields[key];
+      }
+    }
+
+    fillMissingMassFromPercent(fields);
+
+    return { fields, rawText: text, massRegionText };
   } finally {
     fs.unlink(processedPath).catch(() => {});
+    if (massRegionPath) fs.unlink(massRegionPath).catch(() => {});
   }
 }
