@@ -1,0 +1,37 @@
+# syntax=docker/dockerfile:1
+# The heavy, rarely-changing runtime dependencies for the body-composition scan OCR feature
+# (Python + PaddleOCR + its model files) live in their own image, built and pushed separately from
+# the main app image (see .github/workflows/docker-base.yml) — the main Dockerfile then just
+# `FROM` this image and layers the actual app code on top.
+#
+# Why this split exists: before it, every app-code commit rebuilt the *entire* final stage from
+# `node:22-bookworm-slim`, including `pip install paddlepaddle paddleocr` (several hundred MB).
+# BuildKit's own layer cache doesn't reliably survive across builds here — `apt-get update` reads
+# Debian's live package index, so a routine point-release on their mirrors between builds silently
+# produces a different `apt-get install` layer, which cascades into a cache miss for every layer
+# after it (pip install included) even with nothing in the Dockerfile actually changed. The result:
+# a fresh multi-hundred-MB layer had to be pushed to the registry and re-pulled by the running
+# Unraid container on nearly every deploy, regardless of how small the actual app change was.
+# Splitting the heavy stuff into its own image, built on its own schedule (only when this file
+# itself changes), means routine app-code deploys only ever need to pull the thin top layers.
+FROM node:22-bookworm-slim
+WORKDIR /app
+# libgl1/libglib2.0-0: not used directly, but opencv-python (a paddleocr dependency) dlopens
+# libGL.so.1 at import time and fails immediately without it — a well-known opencv-in-a-slim-image
+# gap, not something paddleocr documents up front.
+# libgomp1: PaddlePaddle's compiled libpaddle.so links against libgomp (GNU OpenMP, used for its
+# CPU-parallel kernels) — bookworm-slim doesn't ship it by default, so without this package
+# `import paddleocr` fails immediately with "ImportError: libgomp.so.1: cannot open shared object
+# file", confirmed by an actual CI build failure on this exact image.
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
+    apt-get update && apt-get install -y --no-install-recommends \
+      python3 python3-pip libgl1 libglib2.0-0 libgomp1
+# Versions pinned to what was verified locally (paddlepaddle 3.3.1, paddleocr 3.7.0) rather than
+# left floating, so a new upstream release can't silently change build/runtime behavior.
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip3 install --break-system-packages paddlepaddle==3.3.1 paddleocr==3.7.0
+# Pre-downloads PaddleOCR's detection/recognition model files into this layer at build time (same
+# config as server/ocr/paddleWorker.py) so the running container never needs internet access at
+# runtime and the first real scan doesn't silently eat a ~1 minute model-download delay.
+RUN python3 -c "from paddleocr import PaddleOCR; PaddleOCR(use_doc_orientation_classify=False, use_doc_unwarping=False, use_textline_orientation=False, enable_mkldnn=False, text_detection_model_name='PP-OCRv6_small_det', text_recognition_model_name='PP-OCRv6_small_rec')"

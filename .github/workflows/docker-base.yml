@@ -1,0 +1,49 @@
+name: Build & Push Base Image
+
+# Builds the heavy, rarely-changing PaddleOCR runtime dependencies (see Dockerfile.base) into their
+# own image, separately from the main app build (docker.yml). Only runs when Dockerfile.base itself
+# changes (or manually via workflow_dispatch) — the main Dockerfile then FROMs this image's `latest`
+# tag, so routine app-code deploys never touch these layers at all.
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "Dockerfile.base"
+      - ".github/workflows/docker-base.yml"
+  workflow_dispatch:
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: thaihoang987/gym-note-base
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4.2.2
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3.4.0
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3.10.0
+
+      - name: Build and push
+        uses: docker/build-push-action@v5.4.0
+        with:
+          context: .
+          file: Dockerfile.base
+          push: true
+          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+          cache-from: type=gha,scope=base
+          cache-to: type=gha,mode=max,scope=base
