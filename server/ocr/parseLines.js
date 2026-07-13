@@ -283,6 +283,18 @@ export function parseBodyCompositionLines(rawLines) {
     }
   }
 
+  // Fallback: if weight_kg is still null but standard_weight and weight_control are available,
+  // calculate it from their relationship: weight_kg = standard_weight - weight_control.
+  // This handles cases where the header weight number isn't detected but the "Weight suggestions"
+  // section is OCR'd correctly.
+  if (result.weight_kg === null && standardWeightRaw !== null && weightControlRaw !== null) {
+    const calculated = Number((standardWeightRaw - weightControlRaw).toFixed(1));
+    if (plausible('weight_kg', calculated)) {
+      result.weight_kg = calculated;
+      derivedFields.add('weight_kg');
+    }
+  }
+
   parser.cursor = parser.findLabelIdx('Body composition');
   if (parser.cursor === -1) parser.cursor = 0;
   else parser.cursor += 1;
