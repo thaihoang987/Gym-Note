@@ -2472,20 +2472,13 @@ app.get('/api/body-weight', (req, res) => {
 
 app.get('/api/body-weight/recent', (req, res) => {
   const userId = getUserId(req);
-  res.json(all(`
-    SELECT bw.*
-    FROM body_weight_logs bw
-    JOIN (
-      SELECT date(logged_at) AS day, MAX(logged_at) AS latest_at
-      FROM body_weight_logs
-      WHERE user_id = ?
-      GROUP BY date(logged_at)
-      ORDER BY day DESC
-      LIMIT 5
-    ) recent ON date(bw.logged_at) = recent.day AND bw.logged_at = recent.latest_at
-    WHERE bw.user_id = ?
-    ORDER BY bw.logged_at DESC
-  `, [userId, userId]));
+  // Previously grouped by calendar day (5 most recent days, one row per day) — but a multi-photo
+  // scan batch (see POST /api/body-composition/scan, up to 10 at once) is explicitly meant for
+  // backfilling several past weigh-ins at once, which routinely means more than 5 distinct days
+  // and/or more than one entry on the same day. That grouping silently dropped every row it didn't
+  // keep, with nothing in the UI indicating anything was hidden — indistinguishable from the save
+  // having failed. Plain "most recent N rows" shows everything that was actually saved.
+  res.json(all('SELECT * FROM body_weight_logs WHERE user_id = ? ORDER BY logged_at DESC LIMIT 20', [userId]));
 });
 
 app.post('/api/body-weight', (req, res) => {
