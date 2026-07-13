@@ -62,8 +62,8 @@ def run_ocr(image_path):
                 'cx': (x0 + x1) / 2, 'cy': (y0 + y1) / 2,
             })
 
-    # Fallback: if body_score ("79 points") not detected in full image, crop from ORIGINAL image
-    # BEFORE PaddleOCR scales it. The body_score area (y~1100-1150) sometimes gets missed in
+    # Fallback 1: if body_score ("79 points") not detected in full image, crop from ORIGINAL image
+    # BEFORE PaddleOCR scales it. The body_score area (y~800-1200) sometimes gets missed in
     # full-page OCR but detects reliably when cropped from original and processed separately.
     has_body_score = any('79' in line['text'] or 'points' in line['text'].lower() for line in lines)
     if not has_body_score:
@@ -93,6 +93,49 @@ def run_ocr(image_path):
                             'conf': round(float(score), 4),
                             'x0': x0, 'y0': y0 + 800, 'x1': x1, 'y1': y1 + 800,
                             'cx': (x0 + x1) / 2, 'cy': (y0 + y1) / 2 + 800,
+                        })
+            finally:
+                os.unlink(crop_path)
+        except Exception:
+            pass  # If fallback crop fails, continue with existing lines
+
+    # Fallback 2: if weight_kg (e.g. "51,5" or "51.5") not detected in full image, crop from
+    # ORIGINAL image BEFORE PaddleOCR scales it. Similar to body_score, weight_kg sometimes gets
+    # missed in full-page OCR but detects reliably when cropped separately.
+    has_weight_kg = any(any(c in line['text'] for c in ['51', '52', '53', '54', '55', '56', '57', '58', '59', '60', '61', '62', '63', '64', '65', '66', '.', ',']) for line in lines if line.get('y0', 0) < 1000)
+    # More robust: check if we have a numeric value that looks like weight
+    def looks_like_weight(text):
+        import re
+        return bool(re.search(r'\d+[.,]\d+|\d+\s*kg', text, re.IGNORECASE))
+
+    has_weight_kg = any(looks_like_weight(line['text']) for line in lines if line.get('y0', 0) < 1000)
+    if not has_weight_kg:
+        try:
+            img = Image.open(image_path)
+            # Crop weight_kg region from ORIGINAL image (y=300-550, full width)
+            # Crop BEFORE PaddleOCR scaling to preserve resolution
+            crop = img.crop((0, 300, img.width, 550))
+            # Save crop to temp file
+            with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as tmp:
+                crop_path = tmp.name
+                crop.save(crop_path)
+            try:
+                crop_result = _ocr.ocr(crop_path)
+                for page in crop_result:
+                    texts = page.get('rec_texts', [])
+                    scores = page.get('rec_scores', [])
+                    boxes = page.get('rec_boxes', [])
+                    for text, score, box in zip(texts, scores, boxes):
+                        text = text.strip()
+                        if not text or score < CONF_THRESHOLD:
+                            continue
+                        x0, y0, x1, y1 = [int(v) for v in box]
+                        # Adjust y-coords back to full image space
+                        lines.append({
+                            'text': text,
+                            'conf': round(float(score), 4),
+                            'x0': x0, 'y0': y0 + 300, 'x1': x1, 'y1': y1 + 300,
+                            'cx': (x0 + x1) / 2, 'cy': (y0 + y1) / 2 + 300,
                         })
             finally:
                 os.unlink(crop_path)
