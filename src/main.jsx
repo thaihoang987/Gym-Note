@@ -6547,6 +6547,19 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
   const defaultWeightUnit = settings?.default_weight_unit || 'kg';
   const weightStepsKgOptions = useMemo(() => parseWeightSteps(settings?.weight_steps_kg, defaultKgOptions, 'kg'), [settings?.weight_steps_kg]);
   const weightStepsLbOptions = useMemo(() => parseWeightSteps(settings?.weight_steps_lb, defaultLbOptions, 'lb'), [settings?.weight_steps_lb]);
+  // A draft set's weightKg often starts from a kg-denominated fallback (a hardcoded "20", a kg-mode
+  // default carried over from another session, etc.) with no regard for which unit the wheel is
+  // currently showing. In 'LB' mode the wheel always displays `nearestOption(kgToLb(weightKg),
+  // weightStepsLbOptions)`, which is lossy — e.g. kgToLb(20)=44.09 rounds to the coarse step "40"
+  // — so an untouched wheel can *display* 40 lb while the set's real weightKg is still exactly the
+  // stale 20kg, and tapping done without touching the wheel silently saves 20kg (which redisplays
+  // later as 44.1 lb, not the 40 the user saw and assumed was already correct). Snapping weightKg
+  // through the exact same nearestOption the wheel uses, right when it's assigned, keeps "what the
+  // wheel shows" and "what gets saved" identical from the start — not just after the user has
+  // actually touched the wheel once.
+  const normalizeWeightKgForMode = (weightKg, mode) => (
+    mode === 'LB' ? lbToKg(nearestOption(kgToLb(weightKg), weightStepsLbOptions)) : weightKg
+  );
   const manualUnitLabel = manualUnit === 'lb' ? 'Lbs' : 'Kg';
   const latestBodyWeightKg = latestBodyWeight
     ? (latestBodyWeight.unit === 'lb' ? lbToKg(latestBodyWeight.weight) : Number(latestBodyWeight.weight || 0))
@@ -6689,7 +6702,9 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
         return {
           setIndex,
           weightKg: templateHasWeight(nextTemplate)
-            ? (nextInputOptions.template.weightMode === 'MANUAL' && nextInputOptions.template.manualUnit === 'lb' ? lbToKg(manualLb) : baseWeightKg)
+            ? (nextInputOptions.template.weightMode === 'MANUAL' && nextInputOptions.template.manualUnit === 'lb'
+                ? lbToKg(manualLb)
+                : normalizeWeightKgForMode(baseWeightKg, nextInputOptions.template.weightMode))
             : 0,
           manualKg,
           manualLb,
@@ -6904,7 +6919,11 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
       const draftManualLb = perSet?.manualWeightLb ?? payload.manualWeightLb ?? Number(kgToLb(draftManualKg).toFixed(1));
       return {
         setIndex,
-        weightKg: templateHasWeight(nextTemplate) ? (unit === 'lb' ? lbToKg(draftManualLb) : draftManualKg) : 0,
+        weightKg: templateHasWeight(nextTemplate)
+          ? (nextInputOptions.template.weightMode === 'MANUAL' && unit === 'lb'
+              ? lbToKg(draftManualLb)
+              : normalizeWeightKgForMode(draftManualKg, nextInputOptions.template.weightMode))
+          : 0,
         manualKg: draftManualKg,
         manualLb: draftManualLb,
         reps: templateHasReps(nextTemplate) ? (payload.defaultReps ?? settings?.default_reps ?? 12) : 0,
@@ -7015,8 +7034,22 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
         await refreshExerciseSets().catch(() => {});
         return;
       }
-      // DELETE thành công — đồng bộ lại từ DB
-      await refreshExerciseSets().catch(() => {});
+      // DELETE thành công — không refetch nữa. refreshExerciseSets() rebuilds every draft set
+      // (including ones that were never touched, like set 2/3) using only a single flat
+      // payload.defaultWeightKg/defaultReps, unlike the initial load's buildDraftSet which gives
+      // each draft its own per-set-index suggestion from payload.previous[setIndex-1] — so a
+      // refetch here silently reshuffled every other draft's weight/reps away from what the user
+      // saw when they first opened the exercise. The optimistic update above already reverts this
+      // one set correctly; just mirror the tick path's local completedSets bookkeeping instead of
+      // pulling the whole exercise back from the server.
+      setData((current) => current ? {
+        ...current,
+        exercises: (current.exercises || []).map((item) => (
+          item.id === exercise.id
+            ? { ...item, completedSets: Math.max(0, Number(item.completedSets || 0) - 1) }
+            : item
+        ))
+      } : current);
       return;
     }
     // Tick: bắt buộc theo thứ tự
@@ -7147,6 +7180,14 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
         const weightKg = manualUnit === 'lb' ? lbToKg(manualLb) : manualKg;
         return { ...set, manualKg, manualLb, weightKg };
       }));
+    } else if (mode === 'LB') {
+      // Same reasoning as normalizeWeightKgForMode above: switching into LB mode makes the wheel
+      // immediately display `nearestOption(kgToLb(weightKg), weightStepsLbOptions)`, which can
+      // differ from weightKg's exact kg value — snap weightKg to match that display right away so
+      // there's no window where the wheel shows one number and a tap of "done" would save another.
+      setSets((old) => old.map((set) => (
+        set.done ? set : { ...set, weightKg: normalizeWeightKgForMode(set.weightKg, 'LB') }
+      )));
     }
     void saveWeightPreference({ weightMode: mode, logTemplate: nextTemplate, metricSchema, inputOptions: nextInputOptions }).catch((error) => console.warn('Save weight mode failed', error));
   };
