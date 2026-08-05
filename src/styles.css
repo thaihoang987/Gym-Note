@@ -811,6 +811,20 @@ button:disabled {
   @apply fixed inset-x-0 bottom-0 mx-auto max-w-md border-t border-slate-200 bg-white px-3 pb-3 pt-2 shadow-soft md:max-w-6xl;
   z-index: 9999;
   padding-bottom: max(0.75rem, env(safe-area-inset-bottom));
+  /* iOS Safari/WKWebView compositing bug: the whole page scrolls at the html/body level (no
+     nested scroll container), and during a fast swipe WebKit can delay repainting this
+     fixed-position element — it visibly drags along with the content and only snaps back to the
+     bottom once scrolling settles. Forcing this onto its own GPU compositing layer up front (translate3d
+     is the classic trigger — 2D `translate`/opacity-only transitions don't reliably promote a layer
+     on WebKit) keeps it pinned throughout the scroll instead of lagging. backface-visibility and
+     perspective reinforce the same layer promotion; some older WebKit versions only honor one of
+     the three reliably.  */
+  transform: translate3d(0, 0, 0);
+  -webkit-transform: translate3d(0, 0, 0);
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  perspective: 1000px;
+  -webkit-perspective: 1000px;
 }
 
 .nav-btn {
