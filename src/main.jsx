@@ -2679,7 +2679,12 @@ class ErrorBoundary extends React.Component {
         <div className="panel">
           <h2 className="section-title">{t('error_display')}</h2>
           <p className="text-sm text-slate-700">{this.state.error.message}</p>
-          <button className="primary mt-3" onClick={() => this.setState({ error: null })}>{t('error_retry')}</button>
+          <div className="mt-3 flex gap-2">
+            <button className="primary" onClick={() => this.setState({ error: null })}>{t('error_retry')}</button>
+            {this.props.onExit && (
+              <button className="ghost-btn" onClick={() => { this.setState({ error: null }); this.props.onExit(); }}>{t('workout_nav_exit')}</button>
+            )}
+          </div>
         </div>
       );
     }
@@ -2958,7 +2963,9 @@ function App() {
     <div className="min-h-screen bg-app text-slate-950">
       <main className="mx-auto min-h-screen w-full max-w-md bg-[#f4f6f1] px-4 pb-40 pt-5 text-slate-950 md:max-w-6xl md:px-8">
         {workout ? (
-          <WorkoutLogger userId={user.id} workout={workout} settings={boot.settings} onClose={closeWorkout} />
+          <ErrorBoundary t={t} onExit={closeWorkout}>
+            <WorkoutLogger userId={user.id} workout={workout} settings={boot.settings} onClose={closeWorkout} />
+          </ErrorBoundary>
         ) : (
           <ErrorBoundary key={tab} t={t}>
             <Header user={user} boot={boot} onLogout={() => { localStorage.removeItem('familyGymUser'); sessionStorage.removeItem('familyGymUser'); setUser(null); }} />
