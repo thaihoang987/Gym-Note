@@ -6542,6 +6542,11 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
   const swipeContainerRef = React.useRef(null);
   const weightModePointerAt = React.useRef(0);
   const manualUnitPointerAt = React.useRef(0);
+  // Must be declared unconditionally up here with the other hooks, not further down past the
+  // !data/!exercise early returns below — a hook only reached on some renders (e.g. once `data`
+  // finishes loading) desyncs React's hook count between renders and crashes the whole component
+  // ("Rendered more hooks than during the previous render").
+  const arrowTapRef = React.useRef({ dir: null, time: 0 });
   const isSwipeControlTarget = (target) => Boolean(target?.closest?.('button, input, select, textarea, a, [data-no-swipe], .weight-mode-controls, .wheel-picker, .wheel-column, .set-row'));
 
   // Gắn touchmove với passive:false để preventDefault hoạt động
@@ -7328,7 +7333,6 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
   // double-tap jumps a whole group at once instead, to the previous/next group's first exercise.
   // Detected via a tap-timing ref rather than native dblclick/ondblclick, which doesn't fire
   // reliably for touch taps on mobile.
-  const arrowTapRef = React.useRef({ dir: null, time: 0 });
   const jumpToGroup = (dir) => {
     const total = (data?.exercises || []).length;
     const currentGroupIdx = exerciseGroups.findIndex((group) => (group.exercises || []).some((item) => item.workoutIndex === index));
