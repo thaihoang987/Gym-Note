@@ -2668,8 +2668,9 @@ class ErrorBoundary extends React.Component {
     return { error };
   }
 
-  componentDidCatch(error) {
-    console.error(error);
+  componentDidCatch(error, info) {
+    console.error(error, info?.componentStack);
+    this.setState({ componentStack: info?.componentStack || '' });
   }
 
   render() {
@@ -2679,10 +2680,15 @@ class ErrorBoundary extends React.Component {
         <div className="panel">
           <h2 className="section-title">{t('error_display')}</h2>
           <p className="text-sm text-slate-700">{this.state.error.message}</p>
+          {/* Prod builds ship minified stack traces, so this raw component stack is often the only
+              way to identify which component actually crashed without a dev console attached. */}
+          {this.state.componentStack && (
+            <pre className="mt-2 max-h-40 overflow-auto rounded bg-slate-100 p-2 text-xs text-slate-600">{this.state.componentStack.trim()}</pre>
+          )}
           <div className="mt-3 flex gap-2">
-            <button className="primary" onClick={() => this.setState({ error: null })}>{t('error_retry')}</button>
+            <button className="primary" onClick={() => this.setState({ error: null, componentStack: '' })}>{t('error_retry')}</button>
             {this.props.onExit && (
-              <button className="ghost-btn" onClick={() => { this.setState({ error: null }); this.props.onExit(); }}>{t('workout_nav_exit')}</button>
+              <button className="ghost-btn" onClick={() => { this.setState({ error: null, componentStack: '' }); this.props.onExit(); }}>{t('workout_nav_exit')}</button>
             )}
           </div>
         </div>
