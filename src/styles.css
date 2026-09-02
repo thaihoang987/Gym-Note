@@ -57,7 +57,11 @@ button:disabled {
 }
 
 .app-dialog-backdrop {
-  @apply fixed inset-0 z-[100] grid place-items-center bg-slate-950/45 px-4 backdrop-blur-sm;
+  /* Must outrank every full-screen modal (scan/report/etc. all sit at z-[10000]) since confirm()/
+     alert()/prompt() from useAppDialog() are routinely triggered from inside those — e.g. the
+     "delete this scan?" confirm opened from the body-composition report page — otherwise the
+     dialog renders visually underneath the modal that opened it and looks like it never appeared. */
+  @apply fixed inset-0 z-[20000] grid place-items-center bg-slate-950/45 px-4 backdrop-blur-sm;
 }
 
 .app-dialog {
