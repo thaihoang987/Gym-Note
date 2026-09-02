@@ -178,10 +178,13 @@ export class LineParser {
   }
 }
 
-// The report header shows "DD/MM/YYYY HH:mm" (device locale) with no timezone info at all — it's
-// a naive wall-clock reading, not an instant. Returns a zone-less "YYYY-MM-DDTHH:mm" string (the
-// same shape <input type="datetime-local"> uses) so the browser parses it as its own local time
-// later, or null if the date couldn't be found so the caller falls back to "now".
+// The report header shows "MM/DD/YYYY HH:mm" with no timezone info at all — confirmed against a
+// real report screenshot (09/02/2026 on-screen, taken on Sept 2), NOT the "DD/MM/YYYY (device
+// locale)" this code originally assumed, which had day and month transposed for anyone whose
+// device isn't in that assumed locale. It's also a naive wall-clock reading, not an instant.
+// Returns a zone-less "YYYY-MM-DDTHH:mm" string (the same shape <input type="datetime-local">
+// uses) so the browser parses it as its own local time later, or null if the date couldn't be
+// found so the caller falls back to "now".
 //
 // Deliberately NOT built via `new Date(year, month - 1, day, hour, minute).toISOString()`: that
 // constructor interprets the digits in whatever timezone the Node *process* happens to run in
@@ -192,9 +195,9 @@ export class LineParser {
 // on the server's timezone at all.
 function extractLoggedAt(lines) {
   for (const line of lines) {
-    const match = line.text.match(/([0-3]?[0-9])\/([0-1]?[0-9])\/(20[0-9]{2})\D+([0-2]?[0-9]):([0-5][0-9])/);
+    const match = line.text.match(/([0-1]?[0-9])\/([0-3]?[0-9])\/(20[0-9]{2})\D+([0-2]?[0-9]):([0-5][0-9])/);
     if (!match) continue;
-    const [, day, month, year, hour, minute] = match.map(Number);
+    const [, month, day, year, hour, minute] = match.map(Number);
     if (month < 1 || month > 12 || day < 1 || day > 31 || hour > 23 || minute > 59) continue;
     const pad = (n) => String(n).padStart(2, '0');
     return `${year}-${pad(month)}-${pad(day)}T${pad(hour)}:${pad(minute)}`;

@@ -3564,7 +3564,11 @@ function BodyCompositionScanModal({ userId, onClose, onSaved }) {
     setError('');
     const { logged_at, derived_fields, uncertain_fields, ...savedFields } = fields;
     try {
-      await api('/api/body-composition', { method: 'POST', body: JSON.stringify({ userId, photoPath, loggedAt: parsedDate.toISOString(), ...savedFields }) });
+      // Default api() timeout is 8s, sized for ordinary requests — but this one lands right after
+      // an OCR pass that can pin the CPU for a while on modest self-hosted hardware, so the request
+      // queues behind that instead of failing outright. Give it the same headroom as the scan
+      // request itself instead of aborting (and silently losing this confirm) prematurely.
+      await api('/api/body-composition', { method: 'POST', timeoutMs: 30000, body: JSON.stringify({ userId, photoPath, loggedAt: parsedDate.toISOString(), ...savedFields }) });
     } catch (err) {
       // In a multi-photo batch, OCR + save on later photos can fail on modest hardware after
       // several back-to-back requests. Surfacing the error here (instead of letting it throw
