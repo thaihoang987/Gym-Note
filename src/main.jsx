@@ -3524,6 +3524,17 @@ function BodyCompositionScanModal({ userId, onClose, onSaved }) {
 
   const isLastImage = fileIndex >= files.length - 1;
 
+  // The native datetime-local widget renders in whatever day/month order the browser/OS locale
+  // prefers, which can print in the opposite order from the DD/MM/YYYY the scale's own report
+  // uses — spelling it out explicitly in that same order lets the user cross-check against the
+  // photo by eye instead of trusting the widget's own locale-dependent rendering.
+  const loggedAtPreview = (() => {
+    const d = new Date(loggedAt);
+    if (Number.isNaN(d.getTime())) return '';
+    const pad = (n) => String(n).padStart(2, '0');
+    return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  })();
+
   // Moves on to the next queued image (if any) after the current one is saved or explicitly
   // skipped, or finishes the whole batch once the last image is done. `onSaved` is no longer
   // called from here — see `save` below, which now refreshes after every image instead of only
@@ -3540,11 +3551,20 @@ function BodyCompositionScanModal({ userId, onClose, onSaved }) {
 
   const save = async () => {
     if (saving) return; // guards against a double-click firing two saves for the same photo
+    // The native datetime-local widget can momentarily report an empty value while the user is
+    // still mid-edit on one of its segments (e.g. clearing the year to retype it) — catching that
+    // here up front gives a clear message instead of a generic "save failed" from the date turning
+    // unparsable inside the request below.
+    const parsedDate = new Date(loggedAt);
+    if (Number.isNaN(parsedDate.getTime())) {
+      setError(t('bodycomp_scan_invalid_date'));
+      return;
+    }
     setSaving(true);
     setError('');
     const { logged_at, derived_fields, uncertain_fields, ...savedFields } = fields;
     try {
-      await api('/api/body-composition', { method: 'POST', body: JSON.stringify({ userId, photoPath, loggedAt: new Date(loggedAt).toISOString(), ...savedFields }) });
+      await api('/api/body-composition', { method: 'POST', body: JSON.stringify({ userId, photoPath, loggedAt: parsedDate.toISOString(), ...savedFields }) });
     } catch (err) {
       // In a multi-photo batch, OCR + save on later photos can fail on modest hardware after
       // several back-to-back requests. Surfacing the error here (instead of letting it throw
@@ -3597,8 +3617,9 @@ function BodyCompositionScanModal({ userId, onClose, onSaved }) {
             <p className="text-xs text-slate-500">{t('bodycomp_scan_confirm_hint')}</p>
             <div className="grid grid-cols-[1fr_auto] items-center gap-2">
               <label className="text-sm font-semibold text-slate-700">{t('bodycomp_scan_datetime')}</label>
-              <input className="input compact-input" type="datetime-local" value={loggedAt} onChange={(e) => setLoggedAt(e.target.value)} />
+              <input className="input compact-input" type="datetime-local" value={loggedAt} onChange={(e) => { if (e.target.value) setLoggedAt(e.target.value); }} />
             </div>
+            {loggedAtPreview && <p className="-mt-2 text-right text-xs text-slate-500">{loggedAtPreview}</p>}
             <div className="grid grid-cols-2 gap-2">
               <BodyCompMetricCard
                 label={t('bodycomp_body_score')}

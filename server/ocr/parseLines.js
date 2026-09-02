@@ -178,15 +178,26 @@ export class LineParser {
   }
 }
 
-// The report header shows "DD/MM/YYYY HH:mm" (device locale). Returns an ISO string for
-// `logged_at`, or null if the date couldn't be found so the caller falls back to "now".
+// The report header shows "DD/MM/YYYY HH:mm" (device locale) with no timezone info at all — it's
+// a naive wall-clock reading, not an instant. Returns a zone-less "YYYY-MM-DDTHH:mm" string (the
+// same shape <input type="datetime-local"> uses) so the browser parses it as its own local time
+// later, or null if the date couldn't be found so the caller falls back to "now".
+//
+// Deliberately NOT built via `new Date(year, month - 1, day, hour, minute).toISOString()`: that
+// constructor interprets the digits in whatever timezone the Node *process* happens to run in
+// (e.g. the Docker image's TZ, which defaults to America/New_York per docker-compose.yml when the
+// user hasn't set TZ in .env) — for a user anywhere else, the read digits get silently
+// reinterpreted as if they were that timezone's wall clock and shifted by the difference, often
+// far enough to land on a different calendar day. Formatting the digits directly avoids depending
+// on the server's timezone at all.
 function extractLoggedAt(lines) {
   for (const line of lines) {
     const match = line.text.match(/([0-3]?[0-9])\/([0-1]?[0-9])\/(20[0-9]{2})\D+([0-2]?[0-9]):([0-5][0-9])/);
     if (!match) continue;
     const [, day, month, year, hour, minute] = match.map(Number);
-    const date = new Date(year, month - 1, day, hour, minute);
-    if (!Number.isNaN(date.getTime())) return date.toISOString();
+    if (month < 1 || month > 12 || day < 1 || day > 31 || hour > 23 || minute > 59) continue;
+    const pad = (n) => String(n).padStart(2, '0');
+    return `${year}-${pad(month)}-${pad(day)}T${pad(hour)}:${pad(minute)}`;
   }
   return null;
 }
