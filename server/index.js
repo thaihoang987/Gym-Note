@@ -2478,7 +2478,12 @@ app.get('/api/body-weight/recent', (req, res) => {
   // and/or more than one entry on the same day. That grouping silently dropped every row it didn't
   // keep, with nothing in the UI indicating anything was hidden — indistinguishable from the save
   // having failed. Plain "most recent N rows" shows everything that was actually saved.
-  res.json(all('SELECT * FROM body_weight_logs WHERE user_id = ? ORDER BY logged_at DESC LIMIT 20', [userId]));
+  //
+  // No LIMIT: the client list already scrolls its own fixed-height container instead of paging, so
+  // a row count cap here only meant a save could look "missing" again whenever a misdated entry (or
+  // just a long history) pushed something past the cutoff — same failure mode the switch away from
+  // day-grouping was fixing, just with a fixed number instead.
+  res.json(all('SELECT * FROM body_weight_logs WHERE user_id = ? ORDER BY logged_at DESC', [userId]));
 });
 
 app.post('/api/body-weight', (req, res) => {

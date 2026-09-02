@@ -8612,7 +8612,15 @@ function BodyCompositionReportPage({ userId, settings, logs, index, onNavigate, 
     if (!(await dialog.confirm(t('bodycomp_report_confirm_delete')))) return;
     await api(`/api/body-composition/${row.id}`, { method: 'DELETE' });
     onDeleted?.();
-    onClose();
+    // Stay on the report view and land on a neighboring scan instead of always dropping back to
+    // the list — like paging past a deleted photo in a gallery. Only close outright when this was
+    // the last remaining report, since there'd be nothing left here to show.
+    if (logs.length <= 1) {
+      onClose();
+      return;
+    }
+    const nextIndex = index >= logs.length - 1 ? index - 1 : index;
+    onNavigate?.(nextIndex);
   };
 
   const weightDelta = prevRow && row.weight_kg != null && prevRow.weight_kg != null ? Number((row.weight_kg - prevRow.weight_kg).toFixed(2)) : null;
