@@ -761,6 +761,17 @@ function getTodayDow() {
   return jsDay === 0 ? 6 : jsDay - 1;
 }
 
+// `date.toISOString().slice(0, 10)` reads the date back in UTC — for a `date` built from local
+// year/month/day (as getWeekStartIso does below), that silently reinterprets local midnight through
+// the server's own timezone offset, landing on the wrong calendar day whenever TZ is anything but
+// UTC (e.g. a positive offset like Asia/Ho_Chi_Minh rolls local midnight back to the previous UTC
+// day). This reads the LOCAL date components directly instead, so the string always matches what
+// the server's own clock considers "today" regardless of its configured TZ.
+function localIsoDate(date) {
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+}
+
 // Tính ISO date của ngày đầu chu kỳ tuần hiện tại theo resetDay (0=Mon..6=Sun)
 function getWeekStartIso(resetDay = 0) {
   const today = new Date();
@@ -769,7 +780,7 @@ function getWeekStartIso(resetDay = 0) {
   // diff = số ngày từ resetDay đến hôm nay (mod 7)
   const diff = (dow - reset + 7) % 7;
   const start = new Date(today.getFullYear(), today.getMonth(), today.getDate() - diff);
-  return start.toISOString().slice(0, 10);
+  return localIsoDate(start);
 }
 
 function addDaysIso(value, days) {
