@@ -1849,6 +1849,11 @@ function recalcWeeklyStatsFromHistory(dashboard, settings = {}) {
     current.exercises += Number(row.exercises || 0);
     current.minutes += Number(row.duration_minutes || 0);
     if (!current.imageUrl && (row.imageUrl || row.gifUrl)) current.imageUrl = row.imageUrl || row.gifUrl;
+    // Carries the muscle heatmap's per-exercise target/muscleGroup data through this client-side
+    // recompute (see optimisticCompleteSession, the only place that attaches it to a row) so a
+    // session completed while offline still lights up the heatmap immediately, instead of only
+    // once a real /api/dashboard round-trip replaces this cache.
+    if (row.exercises_detail?.length) current.exercises_detail = [...(current.exercises_detail || []), ...row.exercises_detail];
     byActivityMap.set(name, current);
   }
   const byDay = Array.from({ length: 7 }, (_, index) => {
@@ -1986,6 +1991,20 @@ function optimisticCompleteSession(userId, sessionId, sessionData) {
     // Lấy GIF đại diện từ bài đầu tiên đã tập
     const firstDoneExercise = exercises.find((e) => Number(e.completedSets || 0) > 0) || exercises[0];
     const repGifUrl = firstDoneExercise?.gifUrl || firstDoneExercise?.imageUrl || null;
+    // Same target/muscleGroup/secondaryMuscles shape the real /api/dashboard attaches per
+    // activity (see server/index.js's exRows query) — the muscle heatmap needs this to light up
+    // anything at all, so without it a session completed offline just shows an empty heatmap
+    // until the next full online dashboard fetch replaces this optimistic cache.
+    const exercisesDetail = exercises
+      .filter((exercise) => Number(exercise.completedSets || 0) > 0)
+      .map((exercise) => ({
+        id: exercise.id,
+        name: exercise.name,
+        target: exercise.target,
+        muscleGroup: exercise.muscleGroup,
+        secondaryMuscles: exercise.secondaryMuscles || [],
+        totalSets: Number(exercise.completedSets || 0)
+      }));
     // 1) Thêm vào recentHistory đầu
     const newRow = {
       id: sessionId,
@@ -2001,6 +2020,7 @@ function optimisticCompleteSession(userId, sessionId, sessionData) {
       duration_minutes: 1,
       sets: totalSets,
       exercises: completedExerciseCount,
+      exercises_detail: exercisesDetail,
       gifUrl: repGifUrl,
       imageUrl: repGifUrl,
       offline: true
@@ -4680,8 +4700,10 @@ function WeeklyStatsCard({ stats, settings, suggestion, history = [], routines =
         </div>
       )}
 
-      {/* Muscle heatmap */}
-      {byActivity.length > 0 && (() => {
+      {/* Muscle heatmap — always shown, even with zero sets logged this week yet (e.g. right
+          after finishing a session that's still mid-sync), rather than disappearing outright;
+          MuscleHeatmap already renders a neutral/unlit body for an empty map. */}
+      {(() => {
         const muscleVol = new Map();
         for (const item of byActivity) {
           const sets = Number(item.sets || 0);
@@ -4697,7 +4719,6 @@ function WeeklyStatsCard({ stats, settings, suggestion, history = [], routines =
             addMuscleScore(muscleVol, ex.secondaryMuscles, sets * 0.35);
           }
         }
-        if (muscleVol.size === 0) return null;
         const maxVol = Math.max(...muscleVol.values(), 1);
         const normalized = new Map([...muscleVol.entries()].map(([k, v]) => [k, v / maxVol]));
         return (
