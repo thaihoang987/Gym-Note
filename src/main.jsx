@@ -2596,7 +2596,14 @@ async function api(path, options = {}) {
       if (!cached && path.includes('/api/exercises')) return offlineExercisesForPath(path);
       if (path.includes('/api/groups')) return applyOfflineGroupMutations(userIdFromApiPath(path), cached ? JSON.parse(cached) : []);
       if (path.includes('/api/routines')) return applyOfflineScheduleMutations(userIdFromApiPath(path), cached ? JSON.parse(cached) : { routines: [], rules: [] });
-      return applyOfflineQueueToCachedApi(path, cached ? JSON.parse(cached) : null);
+      // With nothing cached yet (e.g. the very first load of the day, or a cache that was just
+      // cleared) there's no reasonable fallback shape to invent — resolving with null here used to
+      // flow straight into a caller's setState (history/compLogs/etc. all start as [], not null)
+      // and crash the whole screen on the next `.length`/`.map()`, which looked like half the
+      // dashboard had disappeared over one transient failed request. Reject instead so the caller's
+      // state stays at its safe initial value.
+      if (!cached) throw err;
+      return applyOfflineQueueToCachedApi(path, JSON.parse(cached));
     }
     throw err;
   }
