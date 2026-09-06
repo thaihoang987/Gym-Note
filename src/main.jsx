@@ -6567,11 +6567,6 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
   const swipeContainerRef = React.useRef(null);
   const weightModePointerAt = React.useRef(0);
   const manualUnitPointerAt = React.useRef(0);
-  // Must be declared unconditionally up here with the other hooks, not further down past the
-  // !data/!exercise early returns below — a hook only reached on some renders (e.g. once `data`
-  // finishes loading) desyncs React's hook count between renders and crashes the whole component
-  // ("Rendered more hooks than during the previous render").
-  const arrowTapRef = React.useRef({ dir: null, time: 0 });
   const isSwipeControlTarget = (target) => Boolean(target?.closest?.('button, input, select, textarea, a, [data-no-swipe], .weight-mode-controls, .wheel-picker, .wheel-column, .set-row'));
 
   // Gắn touchmove với passive:false để preventDefault hoạt động
@@ -7353,29 +7348,6 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
     if (index > 0) openExercise(index - 1);
   };
   const exerciseGroups = workoutExerciseGroups(data);
-  // The </> arrows (and the "2/5" counter between them) are a position indicator for swiping
-  // through exercises, not a single-step nav control on their own — a lone tap does nothing. A
-  // double-tap jumps a whole group at once instead, to the previous/next group's first exercise.
-  // Detected via a tap-timing ref rather than native dblclick/ondblclick, which doesn't fire
-  // reliably for touch taps on mobile.
-  const jumpToGroup = (dir) => {
-    const total = (data?.exercises || []).length;
-    const currentGroupIdx = exerciseGroups.findIndex((group) => (group.exercises || []).some((item) => item.workoutIndex === index));
-    if (currentGroupIdx === -1) return;
-    const targetGroup = exerciseGroups[currentGroupIdx + dir];
-    const firstExercise = targetGroup?.exercises?.[0];
-    if (firstExercise && firstExercise.workoutIndex >= 0 && firstExercise.workoutIndex < total) openExercise(firstExercise.workoutIndex);
-  };
-  const handleArrowTap = (dir) => {
-    const now = Date.now();
-    const { dir: lastDir, time: lastTime } = arrowTapRef.current;
-    if (lastDir === dir && now - lastTime < 350) {
-      arrowTapRef.current = { dir: null, time: 0 };
-      jumpToGroup(dir);
-      return;
-    }
-    arrowTapRef.current = { dir, time: now };
-  };
   const templateMetricKeys = templateDefaultMetrics(logTemplate);
   const activeMetricKeys = templateMetrics(logTemplate, metricSchema);
   const primaryColumns = templatePrimaryColumns(logTemplate);
@@ -7714,8 +7686,7 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
             <button
               className="ghost-btn px-3 py-3 text-lg font-bold"
               disabled={index === 0}
-              onClick={() => handleArrowTap(-1)}
-              title={t('workout_nav_group_hint')}
+              onClick={() => openExercise(index - 1)}
               style={{opacity: index === 0 ? 0.3 : 1}}
             >‹</button>
             <span className="text-sm font-bold text-slate-600 min-w-[2.5rem] text-center whitespace-nowrap">
@@ -7724,8 +7695,7 @@ function WorkoutLogger({ userId, workout, settings, onClose }) {
             <button
               className="ghost-btn px-3 py-3 text-lg font-bold"
               disabled={index >= (data?.exercises || []).length - 1}
-              onClick={() => handleArrowTap(1)}
-              title={t('workout_nav_group_hint')}
+              onClick={() => openExercise(index + 1)}
               style={{opacity: index >= (data?.exercises || []).length - 1 ? 0.3 : 1}}
             >›</button>
           </>
