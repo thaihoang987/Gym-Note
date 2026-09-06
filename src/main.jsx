@@ -340,7 +340,7 @@ async function downloadGroupsForOffline(userId, onProgress) {
 // ──────────────────────────────────────────────────────────────────────────────
 
 // ── Server status (centralized) ──────────────────────────────────────────────
-async function checkServerAvailable(timeoutMs = 2500) {
+async function checkServerAvailable(timeoutMs = 4000) {
   const ping = `${Date.now()}-${Math.random()}`;
   const attempts = [
     { method: 'HEAD', url: `/api/health?ping=${ping}` },
