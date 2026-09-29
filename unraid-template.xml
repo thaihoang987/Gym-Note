@@ -1,14 +1,14 @@
 <?xml version="1.0"?>
 <Container version="2">
-  <Name>GymApp</Name>
+  <Name>GymNote</Name>
   <Repository>ghcr.io/thaihoang987/gym-note:latest</Repository>
-  <Registry>https://ghcr.io</Registry>
+  <Registry>https://github.com/thaihoang987/Gym-Note/pkgs/container/gym-note</Registry>
   <Network>bridge</Network>
   <Shell>sh</Shell>
   <Privileged>false</Privileged>
   <Support>https://github.com/thaihoang987/Gym-Note/issues</Support>
   <Project>https://github.com/thaihoang987/Gym-Note</Project>
-  <Overview>Gym App - A self-hosted, local-first workout tracker for personal or family use. Features exercise library with GIFs, custom exercises, group/routine builders, fixed and rolling workout schedules, workout logging, body weight tracking, weekly muscle heatmap, analytics, Excel export, multi-user support, backup/restore, and PWA install on mobile. The bundled exercise dataset is intended for personal, educational, and non-commercial use.</Overview>
+  <Overview>Gym Note - A self-hosted, local-first workout tracker for personal or family use. Features exercise library with GIFs, custom exercises, group/routine builders, fixed and rolling workout schedules, workout logging, body weight tracking, weekly muscle heatmap, analytics, Excel export, multi-user support, backup/restore, and PWA install on mobile. The bundled exercise dataset is intended for personal, educational, and non-commercial use. This is a personal project shared as-is.</Overview>
   <Category>Productivity: Tools:</Category>
   <WebUI>http://[IP]:[PORT:3001]/</WebUI>
   <TemplateURL>https://raw.githubusercontent.com/thaihoang987/Gym-Note/main/unraid-template.xml</TemplateURL>

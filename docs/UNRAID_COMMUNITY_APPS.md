@@ -1,6 +1,6 @@
-# Publish Gym App to Unraid Community Apps
+# Publish Gym Note to Unraid Community Apps
 
-This checklist is for publishing Gym App so users can find it in Unraid Community Applications.
+This checklist is for publishing Gym Note so users can find it in Unraid Community Applications.
 
 ## 1. Publish the Docker image
 
@@ -107,7 +107,7 @@ Official references:
 
 ## 6. License and dataset note
 
-Gym App uses the `hasaneyldrm/exercises-dataset` exercise data/media during Docker image build.
+Gym Note uses the `hasaneyldrm/exercises-dataset` exercise data/media during Docker image build.
 
 That dataset is described by its author as educational and non-commercial. Exercise images/GIFs may belong to their respective owners. Keep this notice visible when publishing the app publicly, and replace the bundled dataset/media before any commercial distribution.
 

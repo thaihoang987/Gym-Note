@@ -1,6 +1,17 @@
-# Gym App
+# Gym Note
 
-Gym App is a local-first workout tracker for personal or family use. It includes an exercise library with local JPG/GIF media, group/routine builders, workout logging, body-weight tracking, and basic analytics.
+Gym Note is a self-hosted, local-first workout tracker for personal or family use. It includes an exercise library with local JPG/GIF media, group/routine builders, workout logging, body-weight tracking, and basic analytics.
+
+This is a personal side project, built originally for my own family's workouts and shared here as-is. There's no roadmap or support guarantee — just something maintained in spare time — but issues and forks are welcome.
+
+## Donate
+
+Gym Note is free for personal use. If it helps you, you can optionally support development and maintenance:
+
+- Ko-fi: https://ko-fi.com/leonbell
+- PayPal: https://paypal.me/leonbell95
+
+Donations are voluntary and do not purchase a license to any third-party exercise dataset, images, or GIFs bundled with or referenced by this project.
 
 ## Screenshots
 
@@ -115,7 +126,7 @@ This repo also includes `unraid-template.xml` for Community Applications/manual 
 
 ## Backup and restore
 
-Gym App has two JSON backup modes:
+Gym Note has two JSON backup modes:
 
 | Mode | What it includes | Intended use |
 |---|---|---|
@@ -183,7 +194,7 @@ The app keeps persistent workout data in `./data`, which is mounted into the con
 
 ## Install on phone
 
-Gym App includes PWA support, so it can be installed to the home screen on phones and tablets.
+Gym Note includes PWA support, so it can be installed to the home screen on phones and tablets.
 
 Android Chrome:
 
@@ -205,7 +216,7 @@ Notes:
 
 ## Included dataset
 
-Gym App uses `hasaneyldrm/exercises-dataset` for the default exercise library:
+Gym Note uses `hasaneyldrm/exercises-dataset` for the default exercise library:
 
 - `hasaneyldrm-exercises-dataset/data/exercises.json`: 1,324 exercises
 - `hasaneyldrm-exercises-dataset/images`: JPG thumbnails
@@ -287,16 +298,7 @@ The app checks `/api/health` every 10 seconds. Red means the browser cannot reac
 
 ## Third-party licenses
 
-Gym App uses third-party open-source modules such as React, Vite, Express, dnd kit, react-wheel-picker, Recharts, lucide-react, Tailwind CSS, and others. See [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md) for license and attribution details.
-
-## Donate
-
-Gym App is free for personal use. If it helps you, you can optionally support development and maintenance:
-
-- Ko-fi: https://ko-fi.com/leonbell
-- PayPal: https://paypal.me/leonbell95
-
-Donations are voluntary and do not purchase a license to any third-party exercise dataset, images, or GIFs bundled with or referenced by this project.
+Gym Note uses third-party open-source modules such as React, Vite, Express, dnd kit, react-wheel-picker, Recharts, lucide-react, Tailwind CSS, and others. See [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md) for license and attribution details.
 
 ## Notes
 
