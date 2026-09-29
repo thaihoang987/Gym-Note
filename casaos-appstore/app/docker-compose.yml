@@ -2,7 +2,7 @@ name: gym-app
 
 services:
   gym-app:
-    image: ghcr.io/thaihoang987/gym-app:0.3.82
+    image: ghcr.io/thaihoang987/gym-note:latest
     container_name: gym-app
     restart: unless-stopped
     network_mode: bridge
@@ -45,7 +45,7 @@ x-casaos:
   author: thaihoang987
   category: Productivity
   developer: thaihoang987
-  icon: "https://raw.githubusercontent.com/thaihoang987/Gym-app/main/public/pwa-512.png"
+  icon: "https://raw.githubusercontent.com/thaihoang987/Gym-Note/main/public/pwa-512.png"
   index: /
   port_map: "3001"
   tagline:

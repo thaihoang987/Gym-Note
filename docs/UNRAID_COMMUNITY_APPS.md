@@ -7,7 +7,7 @@ This checklist is for publishing Gym App so users can find it in Unraid Communit
 This repository builds and pushes the image with GitHub Actions:
 
 - Workflow: `.github/workflows/docker.yml`
-- Image: `ghcr.io/thaihoang987/gym-app`
+- Image: `ghcr.io/thaihoang987/gym-note`
 - Default tag: `latest`
 - Commit tag: `sha-<commit>`
 - Release tags: `0.3.47`, `0.3`, etc. when pushing Git tags like `v0.3.47`
@@ -32,8 +32,8 @@ git push origin v0.3.47
 The workflow will publish:
 
 ```text
-ghcr.io/thaihoang987/gym-app:0.3.47
-ghcr.io/thaihoang987/gym-app:0.3
+ghcr.io/thaihoang987/gym-note:0.3.47
+ghcr.io/thaihoang987/gym-note:0.3
 ```
 
 The Unraid template can keep using `latest`, or you can pin it to a stable version tag if you want slower updates.
@@ -48,7 +48,7 @@ unraid-template.xml
 
 Important fields:
 
-- `Repository`: `ghcr.io/thaihoang987/gym-app:latest`
+- `Repository`: `ghcr.io/thaihoang987/gym-note:latest`
 - `WebUI`: `http://[IP]:[PORT:3001]/`
 - `/app/data`: persistent appdata folder
 - `ADMIN_PASSWORD`: used only when the database is first created
@@ -69,7 +69,7 @@ Community Apps works best with a support topic on the Unraid forum.
 Current template support URL:
 
 ```text
-https://github.com/thaihoang987/Gym-app/issues
+https://github.com/thaihoang987/Gym-Note/issues
 ```
 
 Recommended:
@@ -89,7 +89,7 @@ https://ca.unraid.net/submit
 Use the repository URL:
 
 ```text
-https://github.com/thaihoang987/Gym-app
+https://github.com/thaihoang987/Gym-Note
 ```
 
 Then run the CA submission flow:
