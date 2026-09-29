@@ -1566,6 +1566,7 @@ const localeOptions = [
   ['de-DE', 'Deutsch'],
   ['fr-FR', 'Français'],
   ['ru-RU', 'Русский'],
+  ['it-IT', 'Italiano'],
 ];
 // Short, language-neutral chart range codes (3D/7D/1M/...) instead of full localized words like
 // "3 days"/"3 ngày" — with 8 buttons in a row, spelled-out labels wrapped awkwardly, so these stay
@@ -5555,11 +5556,19 @@ function CustomExerciseForm({ initial, onCancel, onSave }) {
 
 function ExerciseInstructions({ exercise, compact = false, settings = {} }) {
   const t = useLang();
-  const rawSteps = (exercise.steps?.length
-    ? exercise.steps
-    : exercise.instructions
-      ? String(exercise.instructions).split(/\n+/)
-      : []);
+  const locale = settings?.locale || 'en-US';
+  const langCode = locale.split('-')[0];
+  const localizedSteps = langCode === 'it' ? exercise.stepsIt : langCode === 'tr' ? exercise.stepsTr : null;
+  const localizedInstructions = langCode === 'it' ? exercise.instructionsIt : langCode === 'tr' ? exercise.instructionsTr : null;
+  const rawSteps = (localizedSteps?.length
+    ? localizedSteps
+    : localizedInstructions
+      ? String(localizedInstructions).split(/\n+/)
+      : exercise.steps?.length
+        ? exercise.steps
+        : exercise.instructions
+          ? String(exercise.instructions).split(/\n+/)
+          : []);
   const steps = rawSteps
     .map((step) => {
       if (typeof step === 'string') return step;
