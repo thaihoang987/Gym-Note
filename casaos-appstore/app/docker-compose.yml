@@ -1,9 +1,9 @@
-name: gym-app
+name: gym-note
 
 services:
-  gym-app:
+  gym-note:
     image: ghcr.io/thaihoang987/gym-note:latest
-    container_name: gym-app
+    container_name: gym-note
     restart: unless-stopped
     network_mode: bridge
     ports:
@@ -41,7 +41,7 @@ services:
 x-casaos:
   architectures:
     - amd64
-  main: gym-app
+  main: gym-note
   author: thaihoang987
   category: Productivity
   developer: thaihoang987

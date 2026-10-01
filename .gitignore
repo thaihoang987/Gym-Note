@@ -3,7 +3,6 @@ dist/
 .env
 hasaneyldrm-exercises-dataset/
 data/
-Gym-app/
-Gym-app-github/
 /test image/
 .scratch-*/
+.claude/

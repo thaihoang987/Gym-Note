@@ -43,7 +43,7 @@ jobs:
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
           labels: |
-            org.opencontainers.image.title=Gym App
+            org.opencontainers.image.title=Gym Note
             org.opencontainers.image.description=Self-hosted family workout tracker for Docker and Unraid
             org.opencontainers.image.vendor=thaihoang987
 

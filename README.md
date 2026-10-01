@@ -97,7 +97,7 @@ For Unraid, map an appdata folder to `/app/data`, for example:
 
 ```yaml
 volumes:
-  - /mnt/user/appdata/gym-app:/app/data
+  - /mnt/user/appdata/gym-note:/app/data
 ```
 
 Recommended Unraid container settings:
@@ -108,20 +108,20 @@ Recommended Unraid container settings:
 | WebUI | `http://[IP]:[PORT:3001]/` |
 | Network | `bridge` |
 | Web Port | Container `3001` to host `3001` |
-| Appdata path | `/mnt/user/appdata/gym-app/data` mapped to `/app/data` |
+| Appdata path | `/mnt/user/appdata/gym-note/data` mapped to `/app/data` |
 | Restart policy | `unless-stopped` |
 | Default username | `admin` |
 | Default password | `admin123`, or the `ADMIN_PASSWORD` variable on a fresh database |
 
 Files to back up:
 
-- `/mnt/user/appdata/gym-app/data/gym.sqlite`
-- `/mnt/user/appdata/gym-app/data/uploads`
-- `/mnt/user/appdata/gym-app/data/exercise-translations` if you add custom translations
+- `/mnt/user/appdata/gym-note/data/gym.sqlite`
+- `/mnt/user/appdata/gym-note/data/uploads`
+- `/mnt/user/appdata/gym-note/data/exercise-translations` if you add custom translations
 
 Server logs are written to:
 
-- `/mnt/user/appdata/gym-app/data/logs/server.log`
+- `/mnt/user/appdata/gym-note/data/logs/server.log`
 
 This repo also includes `unraid-template.xml` for Community Applications/manual template use.
 
@@ -139,7 +139,7 @@ Password hashes are one-way encrypted values. They are not decrypted during rest
 For a full Unraid/server backup, also keep the appdata folder:
 
 ```text
-/mnt/user/appdata/gym-app/data
+/mnt/user/appdata/gym-note/data
 ```
 
 ## Docker image registry
@@ -176,7 +176,7 @@ Publishing checklist:
 
 1. Push to `main` and confirm the Docker workflow publishes `ghcr.io/thaihoang987/gym-note:latest`.
 2. In GitHub Packages, set the GHCR package visibility to **Public**.
-3. Test install on your own Unraid server with `/mnt/user/appdata/gym-app/data` mapped to `/app/data`.
+3. Test install on your own Unraid server with `/mnt/user/appdata/gym-note/data` mapped to `/app/data`.
 4. Optional but recommended: create an Unraid forum support topic and update the `<Support>` link in `unraid-template.xml`.
 5. Submit the repository at `https://ca.unraid.net/submit`.
 
@@ -275,7 +275,7 @@ Check that `/app/data` is mapped to persistent storage. Uploaded files live unde
 On Unraid this should be:
 
 ```text
-/mnt/user/appdata/gym-app/data/uploads
+/mnt/user/appdata/gym-note/data/uploads
 ```
 
 ### Check server logs
@@ -284,13 +284,13 @@ Local/Docker Compose:
 
 ```powershell
 Get-Content .\data\logs\server.log -Tail 50
-docker logs gym-app
+docker logs gym-note
 ```
 
 Unraid:
 
 ```bash
-tail -f /mnt/user/appdata/gym-app/data/logs/server.log
+tail -f /mnt/user/appdata/gym-note/data/logs/server.log
 ```
 
 ### Connect / Disconnect indicator is red

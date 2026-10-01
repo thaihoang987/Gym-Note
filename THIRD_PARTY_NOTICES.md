@@ -1,6 +1,6 @@
 # Third-Party Notices
 
-Gym App uses open-source libraries and an external exercise dataset. This file summarizes the main third-party components used by the application. Full license text for npm packages is available in each package published to npm and in `node_modules` after installation.
+Gym Note uses open-source libraries and an external exercise dataset. This file summarizes the main third-party components used by the application. Full license text for npm packages is available in each package published to npm and in `node_modules` after installation.
 
 ## Application Dependencies
 
@@ -45,7 +45,7 @@ Important license notes from the dataset README:
 - Exercise images and videos belong to their respective copyright holders.
 - Copyright owners should contact the dataset owner for removal requests.
 
-Gym App does not claim ownership of that dataset, its images, or its videos. Users who build or run Gym App with this bundled dataset are responsible for complying with the dataset's terms and any applicable third-party media rights.
+Gym Note does not claim ownership of that dataset, its images, or its videos. Users who build or run Gym Note with this bundled dataset are responsible for complying with the dataset's terms and any applicable third-party media rights.
 
 For public or commercial distribution, replace the bundled exercise media with content that has a clear license allowing that use, or require users to download/import their own exercise media separately.
 

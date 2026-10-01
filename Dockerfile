@@ -57,7 +57,7 @@ RUN --mount=type=cache,target=/root/.cache/pip \
 
 LABEL net.unraid.docker.icon="https://raw.githubusercontent.com/thaihoang987/Gym-Note/main/public/pwa-512.png"
 LABEL org.opencontainers.image.source="https://github.com/thaihoang987/Gym-Note"
-LABEL org.opencontainers.image.description="Gym App - self-hosted workout tracker"
+LABEL org.opencontainers.image.description="Gym Note - self-hosted workout tracker"
 LABEL org.opencontainers.image.licenses="MIT"
 
 COPY --from=build /app/package*.json ./

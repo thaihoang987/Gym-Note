@@ -3095,7 +3095,7 @@ function Login({ onLogin }) {
         <div className="mb-7 flex items-center gap-3">
           <div className="grid h-12 w-12 place-items-center rounded-full bg-emerald-500 text-green-950"><Dumbbell /></div>
           <div>
-            <h1 className="text-2xl font-bold">Gym App</h1>
+            <h1 className="text-2xl font-bold">Gym Note</h1>
             <p className="text-sm text-teal-950">{t('login_subtitle')}</p>
           </div>
         </div>
@@ -6323,7 +6323,7 @@ const ShareCardImage = React.forwardRef(function ShareCardImage({ detail, sessio
           })}
         </div>
         {/* Footer */}
-        <div style={{ marginTop: 18, textAlign: 'center', fontSize: 11, opacity: 0.6 }}>Tracked with Gym App</div>
+        <div style={{ marginTop: 18, textAlign: 'center', fontSize: 11, opacity: 0.6 }}>Tracked with Gym Note</div>
       </div>
     </div>
   );
@@ -9753,7 +9753,7 @@ function SettingsPage({ userId, boot, onChanged }) {
           </div>
         </div>
       </div>
-      <p className="pb-4 text-center text-xs text-slate-400">Gym App {`v${__APP_VERSION__}`}</p>
+      <p className="pb-4 text-center text-xs text-slate-400">Gym Note {`v${__APP_VERSION__}`}</p>
     </section>
   );
 }

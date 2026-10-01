@@ -33,13 +33,13 @@
   <Config
     Name="Data Path"
     Target="/app/data"
-    Default="/mnt/user/appdata/gym-app/data"
+    Default="/mnt/user/appdata/gym-note/data"
     Mode="rw"
     Description="Where the database, uploaded images, and logs are stored. Back this up regularly!"
     Type="Path"
     Display="always"
     Required="true"
-    Mask="false">/mnt/user/appdata/gym-app/data</Config>
+    Mask="false">/mnt/user/appdata/gym-note/data</Config>
 
   <!-- ADMIN PASSWORD -->
   <Config

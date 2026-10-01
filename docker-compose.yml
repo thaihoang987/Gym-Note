@@ -1,8 +1,8 @@
 services:
-  gym-app:
+  gym-note:
     build: .
-    image: gym-app:latest
-    container_name: gym-app
+    image: gym-note:latest
+    container_name: gym-note
     ports:
       - "${PORT:-3001}:3001"
     volumes:

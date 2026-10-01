@@ -2730,9 +2730,9 @@ app.get('/api/backup', (req, res) => {
   const today = new Date().toISOString().slice(0, 10);
   if (scope === 'admin') {
     assertAdmin(userId);
-    res.setHeader('Content-Disposition', `attachment; filename="gym-app-admin-backup-${today}.json"`);
+    res.setHeader('Content-Disposition', `attachment; filename="gym-note-admin-backup-${today}.json"`);
     res.json({
-      app: 'Gym App',
+      app: 'Gym Note',
       version: 2,
       scope: 'admin',
       exportedAt: new Date().toISOString(),
@@ -2741,8 +2741,8 @@ app.get('/api/backup', (req, res) => {
     });
     return;
   }
-  res.setHeader('Content-Disposition', `attachment; filename="gym-app-user-backup-${userId}-${today}.json"`);
-  res.json({ app: 'Gym App', version: 2, scope: 'user', userId, exportedAt: new Date().toISOString(), data: readExportTables(userId) });
+  res.setHeader('Content-Disposition', `attachment; filename="gym-note-user-backup-${userId}-${today}.json"`);
+  res.json({ app: 'Gym Note', version: 2, scope: 'user', userId, exportedAt: new Date().toISOString(), data: readExportTables(userId) });
 });
 
 app.post('/api/backup/import', (req, res) => {
@@ -2875,6 +2875,6 @@ app.use((error, req, res, next) => {
 });
 
 app.listen(port, () => {
-  writeServerLog('info', `Gym App listening on http://localhost:${port}`);
-  console.log(`Gym App listening on http://localhost:${port}`);
+  writeServerLog('info', `Gym Note listening on http://localhost:${port}`);
+  console.log(`Gym Note listening on http://localhost:${port}`);
 });

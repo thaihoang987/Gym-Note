@@ -3,8 +3,6 @@ dist
 data
 .git
 .gitignore
-Gym-app
-Gym-app-github
 hasaneyldrm-exercises-dataset
 *.log
 scripts

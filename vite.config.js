@@ -56,7 +56,7 @@ export default defineConfig({
         ]
       },
       manifest: {
-        name: 'Gym App',
+        name: 'Gym Note',
         short_name: 'Gym',
         description: 'Self-hosted workout tracker for exercises, routines, body weight, and analytics.',
         theme_color: '#1e3a5f',
