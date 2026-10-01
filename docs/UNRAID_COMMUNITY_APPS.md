@@ -2,6 +2,15 @@
 
 This checklist is for publishing Gym Note so users can find it in Unraid Community Applications.
 
+## 0. GitHub repository basics
+
+- Repository visibility: **Public**
+- About (gear icon on the repo home page):
+  - Description: `Self-hosted, local-first workout tracker for Docker / Unraid / CasaOS - exercise library with GIFs, workout logging, body-composition scan, analytics, PWA.`
+  - Website: `https://github.com/thaihoang987/Gym-Note#readme`
+  - Topics: `unraid`, `unraid-template`, `docker`, `self-hosted`, `workout-tracker`, `fitness`, `gym`, `pwa`, `casaos`
+- `LICENSE` (MIT) present in the repository root
+
 ## 1. Publish the Docker image
 
 This repository builds and pushes the image with GitHub Actions:

@@ -8,14 +8,23 @@
   <Privileged>false</Privileged>
   <Support>https://github.com/thaihoang987/Gym-Note/issues</Support>
   <Project>https://github.com/thaihoang987/Gym-Note</Project>
-  <Overview>Gym Note - A self-hosted, local-first workout tracker for personal or family use. Features exercise library with GIFs, custom exercises, group/routine builders, fixed and rolling workout schedules, workout logging, body weight tracking, weekly muscle heatmap, analytics, Excel export, multi-user support, backup/restore, and PWA install on mobile. The bundled exercise dataset is intended for personal, educational, and non-commercial use. This is a personal project shared as-is.</Overview>
+  <Overview>Gym Note - A self-hosted, local-first workout tracker for personal or family use. Exercise library with GIFs, custom exercises, group/routine builders, fixed and rolling workout schedules, workout logging with PR tracking, body weight tracking, body-composition report scanning (OCR from smart-scale screenshots), weekly muscle heatmap, analytics, Excel export, multi-user support, backup/restore, offline-capable PWA install on mobile, and 11 UI languages. The bundled exercise dataset is intended for personal, educational, and non-commercial use. This is a personal project shared as-is.</Overview>
   <Category>Productivity: Tools:</Category>
   <WebUI>http://[IP]:[PORT:3001]/</WebUI>
   <TemplateURL>https://raw.githubusercontent.com/thaihoang987/Gym-Note/main/unraid-template.xml</TemplateURL>
   <Icon>https://raw.githubusercontent.com/thaihoang987/Gym-Note/main/public/pwa-512.png</Icon>
+  <DonateText>Support development</DonateText>
+  <DonateLink>https://ko-fi.com/leonbell</DonateLink>
+  <ReadMe>https://github.com/thaihoang987/Gym-Note#readme</ReadMe>
+  <Beta>False</Beta>
+  <Changes>[b]2026-10-01[/b]&#xD;
+- Renamed Gym App to Gym Note (new image ghcr.io/thaihoang987/gym-note)&#xD;
+- Added Italian language (11 UI languages)&#xD;
+- Body-composition scan, per-metric history charts and many stability fixes&#xD;
+Full history: https://github.com/thaihoang987/Gym-Note/commits/main</Changes>
   <ExtraParams>--restart=unless-stopped</ExtraParams>
   <Author>thaihoang987</Author>
-  <Date>2026-06-04</Date>
+  <Date>2026-10-01</Date>
 
   <!-- PORT -->
   <Config

@@ -1,6 +1,6 @@
 <CommunityApplications>
   <Profile>
-    Gym Note is a self-hosted, local-first workout tracker for personal or family use. It includes an exercise library with GIFs (bundled from the third-party hasaneyldrm/exercises-dataset for personal, educational, and non-commercial use; see THIRD_PARTY_NOTICES.md), custom exercises, group/routine builders, fixed and rolling workout schedules, workout logging, body weight tracking, weekly muscle heatmap, analytics, Excel export, multi-user support, backup/restore, and PWA install on mobile. This is a personal project, shared as-is. For support, open an issue on the GitHub repository.
+    Gym Note is a self-hosted, local-first workout tracker for personal or family use. It includes an exercise library with GIFs (bundled from the third-party hasaneyldrm/exercises-dataset for personal, educational, and non-commercial use; see THIRD_PARTY_NOTICES.md), custom exercises, group/routine builders, fixed and rolling workout schedules, workout logging with PR tracking, body weight tracking, body-composition report scanning (OCR), weekly muscle heatmap, analytics, Excel export, multi-user support, backup/restore, offline-capable PWA install on mobile, and 11 UI languages. This is a personal project, shared as-is. For support, open an issue on the GitHub repository.
   </Profile>
   <Icon>https://raw.githubusercontent.com/thaihoang987/Gym-Note/main/public/pwa-512.png</Icon>
   <WebPage>https://github.com/thaihoang987/Gym-Note</WebPage>
