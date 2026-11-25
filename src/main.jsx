@@ -340,7 +340,7 @@ async function downloadGroupsForOffline(userId, onProgress) {
 // ──────────────────────────────────────────────────────────────────────────────
 
 // ── Server status (centralized) ──────────────────────────────────────────────
-async function checkServerAvailable(timeoutMs = 4000) {
+async function checkServerAvailable(timeoutMs = 8000) {
   const ping = `${Date.now()}-${Math.random()}`;
   const attempts = [
     { method: 'HEAD', url: `/api/health?ping=${ping}` },
@@ -374,8 +374,16 @@ function ServerStatusProvider({ children }) {
   const onlineRef = React.useRef(false);
   const timerRef = React.useRef(null);
 
+  const failuresRef = React.useRef(0);
   const check = React.useCallback(async () => {
-    const ok = await checkServerAvailable();
+    let ok = await checkServerAvailable();
+    if (ok) {
+      failuresRef.current = 0;
+    } else {
+      // Chỉ báo Offline sau 2 lần lỗi liên tiếp (tránh nhấp nháy do mạng 5G/proxy chập chờn)
+      failuresRef.current += 1;
+      if (failuresRef.current < 2) ok = onlineRef.current;
+    }
     onlineRef.current = ok;
     setOnline(ok);
     return ok;
@@ -402,7 +410,8 @@ function ServerStatusProvider({ children }) {
     schedule();
 
     const onWindowOnline = () => check();
-    const onWindowOffline = () => { onlineRef.current = false; setOnline(false); };
+    // iOS đôi khi bắn 'offline' sai -> không tin, kiểm tra thật bằng /api/health
+    const onWindowOffline = () => { check(); };
     const onVisible = () => { if (!document.hidden) check(); };
 
     window.addEventListener('online', onWindowOnline);
